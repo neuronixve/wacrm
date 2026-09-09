@@ -41,16 +41,44 @@ export async function loadAiConfig(
     .maybeSingle()
 
   if (error) throw error
-  if (!data) return null
+  if (!data) {
+    // Platform-wide Gemini fallback if no custom config exists yet
+    if (process.env.GEMINI_API_KEY) {
+      return {
+        provider: 'gemini',
+        model: 'gemini-2.0-flash',
+        apiKey: process.env.GEMINI_API_KEY,
+        systemPrompt: null,
+        isActive: true,
+        autoReplyEnabled: true,
+        autoReplyMaxPerConversation: 10,
+        handoffAgentId: null,
+        embeddingsApiKey: null,
+      }
+    }
+    return null
+  }
 
   const row = data as AiConfigRow
   // The Playground passes requireActive:false so an admin can test the
   // agent before flipping the master switch on.
   if (requireActive && !row.is_active) return null
-  // Defensive: the column is NOT NULL, but a partial write / manual DB
-  // edit could leave it empty. Treat a missing key as "not configured"
-  // rather than letting decrypt() throw on null.
-  if (!row.api_key) return null
+
+  let apiKeyPlain = ''
+  if (row.api_key) {
+    try {
+      apiKeyPlain = decrypt(row.api_key)
+    } catch {
+      apiKeyPlain = ''
+    }
+  }
+
+  // If using gemini and key is omitted or placeholder, use system-wide GEMINI_API_KEY
+  if ((!apiKeyPlain || apiKeyPlain === 'system') && row.provider === 'gemini' && process.env.GEMINI_API_KEY) {
+    apiKeyPlain = process.env.GEMINI_API_KEY
+  }
+
+  if (!apiKeyPlain) return null
 
   // The embeddings key is optional and independent of the chat key —
   // a corrupt/undecryptable one should downgrade to lexical KB, not
@@ -71,8 +99,8 @@ export async function loadAiConfig(
 
   return {
     provider: row.provider,
-    model: row.model,
-    apiKey: decrypt(row.api_key),
+    model: row.model || 'gemini-2.0-flash',
+    apiKey: apiKeyPlain,
     systemPrompt: row.system_prompt,
     isActive: row.is_active,
     autoReplyEnabled: row.auto_reply_enabled,

@@ -27,9 +27,9 @@ export async function POST(request: Request) {
     }
 
     const provider = body.provider as AiProvider
-    if (provider !== 'openai' && provider !== 'anthropic' && provider !== 'deepseek') {
+    if (provider !== 'openai' && provider !== 'anthropic' && provider !== 'deepseek' && provider !== 'gemini') {
       return NextResponse.json(
-        { error: 'provider must be "openai", "anthropic", or "deepseek"' },
+        { error: 'provider must be "openai", "anthropic", "deepseek", or "gemini"' },
         { status: 400 },
       )
     }
@@ -47,18 +47,27 @@ export async function POST(request: Request) {
         .eq('account_id', accountId)
         .maybeSingle()
       if (!existing?.api_key) {
-        return NextResponse.json(
-          { error: 'Enter an API key to test.' },
-          { status: 400 },
-        )
-      }
-      try {
-        apiKeyPlain = decrypt(existing.api_key)
-      } catch {
-        return NextResponse.json(
-          { error: 'Stored API key could not be decrypted — re-enter your key.' },
-          { status: 400 },
-        )
+        if (provider === 'gemini' && process.env.GEMINI_API_KEY) {
+          apiKeyPlain = process.env.GEMINI_API_KEY
+        } else {
+          return NextResponse.json(
+            { error: 'Enter an API key to test.' },
+            { status: 400 },
+          )
+        }
+      } else {
+        try {
+          apiKeyPlain = decrypt(existing.api_key)
+        } catch {
+          if (provider === 'gemini' && process.env.GEMINI_API_KEY) {
+            apiKeyPlain = process.env.GEMINI_API_KEY
+          } else {
+            return NextResponse.json(
+              { error: 'Stored API key could not be decrypted — re-enter your key.' },
+              { status: 400 },
+            )
+          }
+        }
       }
     }
 

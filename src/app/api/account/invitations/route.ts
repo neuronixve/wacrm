@@ -214,6 +214,30 @@ export async function POST(request: Request) {
       label = trimmed === "" ? null : trimmed;
     }
 
+    // Enforce Plan Agent Limits
+    const { data: acct } = await ctx.supabase
+      .from("accounts")
+      .select("max_agents, plan_tier")
+      .eq("id", ctx.accountId)
+      .single();
+
+    const maxAgents = acct?.max_agents || 1;
+
+    // Count existing profiles for this account
+    const { count: memberCount } = await ctx.supabase
+      .from("profiles")
+      .select("id", { count: "exact", head: true })
+      .eq("account_id", ctx.accountId);
+
+    if ((memberCount || 0) >= maxAgents) {
+      return NextResponse.json(
+        {
+          error: `Has alcanzado el límite de ${maxAgents} usuario(s) permitido en tu ${acct?.plan_tier ? `Plan ${acct.plan_tier.toUpperCase()}` : "plan actual"}. Actualiza tu plan para invitar más miembros.`,
+        },
+        { status: 403 },
+      );
+    }
+
     const { token, hash } = generateInviteToken();
 
     const { data, error } = await ctx.supabase

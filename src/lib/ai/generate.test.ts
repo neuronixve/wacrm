@@ -222,3 +222,55 @@ describe('generateReply — DeepSeek', () => {
     expect(body.max_tokens).toBe(1024)
   })
 })
+
+describe('generateReply — Gemini', () => {
+  it('calls Google Gemini generateContent with multimodal support', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        candidates: [
+          {
+            content: {
+              parts: [{ text: 'Pago Móvil recibido con éxito. Referencia 1234.' }],
+              role: 'model',
+            },
+            finishReason: 'STOP',
+          },
+        ],
+        usageMetadata: {
+          promptTokenCount: 120,
+          candidatesTokenCount: 15,
+          totalTokenCount: 135,
+        },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = await generateReply({
+      config: config({ provider: 'gemini', model: 'gemini-2.0-flash' }),
+      systemPrompt: 'sys',
+      messages: [
+        {
+          role: 'user',
+          content: 'Aquí está mi comprobante',
+          media: {
+            type: 'image',
+            mimeType: 'image/jpeg',
+            base64: 'fakeBase64',
+          },
+        },
+      ],
+    })
+
+    expect(res).toEqual({
+      text: 'Pago Móvil recibido con éxito. Referencia 1234.',
+      handoff: false,
+      usage: { promptTokens: 120, completionTokens: 15, totalTokens: 135 },
+    })
+    const [url, opts] = fetchMock.mock.calls[0]
+    expect(url).toContain('generativelanguage.googleapis.com')
+    expect(url).toContain('gemini-2.0-flash')
+    const body = JSON.parse(opts.body)
+    expect(body.contents[0].parts).toHaveLength(2)
+    expect(body.contents[0].parts[0].inlineData.mimeType).toBe('image/jpeg')
+  })
+})

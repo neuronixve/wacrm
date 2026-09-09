@@ -220,3 +220,51 @@ export async function sendEvolutionMediaMessage(
     }),
   });
 }
+
+/**
+ * Retrieves the base64 content of a media message (audio or image) from Evolution API.
+ */
+export async function getEvolutionMediaBase64(
+  instanceName: string,
+  messageId: string
+): Promise<string | null> {
+  try {
+    const data = await evolutionFetch<{ base64?: string }>(
+      `/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          message: {
+            key: {
+              id: messageId,
+            },
+          },
+          convertToMp4: false,
+        }),
+      }
+    );
+    return data?.base64 || null;
+  } catch (err) {
+    console.error('[evolution-api] Failed to get base64 media:', err);
+    return null;
+  }
+}
+
+/**
+ * Compresses an image base64 buffer to max 1024x1024 resolution to protect token usage and bandwidth.
+ */
+export async function compressImageBase64(rawBase64: string): Promise<string> {
+  try {
+    const sharp = (await import('sharp')).default;
+    const clean = rawBase64.replace(/^data:image\/\w+;base64,/, '');
+    const inputBuffer = Buffer.from(clean, 'base64');
+    const resizedBuffer = await sharp(inputBuffer)
+      .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+    return resizedBuffer.toString('base64');
+  } catch (err) {
+    console.warn('[image-compression] compression failed, falling back to raw:', err);
+    return rawBase64;
+  }
+}

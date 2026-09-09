@@ -6,7 +6,7 @@
 // whether the account is on OpenAI or Anthropic.
 // ============================================================
 
-export type AiProvider = 'openai' | 'anthropic' | 'deepseek'
+export type AiProvider = 'openai' | 'anthropic' | 'deepseek' | 'gemini'
 
 /**
  * Account AI setup, decrypted and ready to use. Produced by
@@ -31,10 +31,17 @@ export interface AiConfig {
   embeddingsApiKey: string | null
 }
 
-/** A single conversation turn in the shape both providers accept. */
+export interface ChatMessageMedia {
+  type: 'image' | 'audio'
+  mimeType: string
+  base64: string
+}
+
+/** A single conversation turn in the shape providers accept. */
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
+  media?: ChatMessageMedia
 }
 
 /**

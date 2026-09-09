@@ -42,3 +42,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# scratch migration scripts & dumps
+supabase/clean_migrations.js
+supabase/build_safe_migration.js
+supabase/all_migrations.sql
+supabase/migracion_*.sql
+supabase/pending_migrations.sql
+

@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
+import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply';
+import {
+  sendEvolutionTextMessage,
+  getEvolutionMediaBase64,
+  compressImageBase64,
+} from '@/lib/whatsapp/evolution-api';
 
 export const runtime = 'nodejs';
 
@@ -108,8 +114,13 @@ export async function POST(request: Request) {
       } else if (msg?.imageMessage) {
         contentType = 'image';
         mediaType = msg.imageMessage.mimetype || 'image/jpeg';
-        mediaUrl = msg.imageMessage.url || null;
         contentText = msg.imageMessage.caption || '';
+        // Fetch and compress image base64
+        const rawB64 = await getEvolutionMediaBase64(instanceName, waMessageId);
+        if (rawB64) {
+          const compressed = await compressImageBase64(rawB64);
+          mediaUrl = `data:image/jpeg;base64,${compressed}`;
+        }
       } else if (msg?.videoMessage) {
         contentType = 'video';
         mediaType = msg.videoMessage.mimetype || 'video/mp4';
@@ -118,7 +129,13 @@ export async function POST(request: Request) {
       } else if (msg?.audioMessage) {
         contentType = 'audio';
         mediaType = msg.audioMessage.mimetype || 'audio/ogg';
-        mediaUrl = msg.audioMessage.url || null;
+        const seconds = msg.audioMessage.seconds || 0;
+        if (seconds <= 90) {
+          const rawB64 = await getEvolutionMediaBase64(instanceName, waMessageId);
+          if (rawB64) {
+            mediaUrl = `data:${mediaType};base64,${rawB64}`;
+          }
+        }
       } else if (msg?.documentMessage) {
         contentType = 'document';
         mediaType = msg.documentMessage.mimetype || 'application/octet-stream';
@@ -231,12 +248,66 @@ export async function POST(request: Request) {
         return NextResponse.json({ received: true, ignored: 'duplicate replay' });
       }
 
-      // Bump conversation
+      // Bump conversation & dispatch AI / SaaS quota checks
       if (!isFromMe) {
         await supabaseAdmin().rpc('bump_conversation_on_inbound', {
           p_conversation_id: conversationId,
           p_last_message_text: contentText || `[${contentType}]`,
         });
+
+        // 1. Guardrail for long audio (>90s)
+        const audioSeconds = msg?.audioMessage?.seconds || 0;
+        if (contentType === 'audio' && audioSeconds > 90) {
+          await sendEvolutionTextMessage(
+            instanceName,
+            sanitizedPhone,
+            'El audio recibido dura más de 90 segundos. Para poder atenderte rápidamente, por favor envíanos un audio más breve (máximo 90 segundos) o tu consulta en texto.'
+          );
+          return NextResponse.json({ received: true, messageId: insertedRows[0].id, skippedAi: 'audio_too_long' });
+        }
+
+        // 2. SaaS Plan Quota Check & Increment
+        const { data: acct } = await supabaseAdmin()
+          .from('accounts')
+          .select('messages_count, monthly_message_limit, extra_messages_balance, audios_count, monthly_audio_limit, ocr_count, monthly_ocr_limit')
+          .eq('id', accountId)
+          .single();
+
+        let quotaExceeded = false;
+        if (acct) {
+          const totalMessageLimit = (acct.monthly_message_limit || 1500) + (acct.extra_messages_balance || 0);
+          const isOverMessageLimit = (acct.messages_count || 0) >= totalMessageLimit;
+          const isOverAudioLimit = contentType === 'audio' && (acct.audios_count || 0) >= (acct.monthly_audio_limit || 200);
+          const isOverOcrLimit = contentType === 'image' && (acct.ocr_count || 0) >= (acct.monthly_ocr_limit || 50);
+
+          quotaExceeded = isOverMessageLimit || isOverAudioLimit || isOverOcrLimit;
+
+          const updates: Record<string, number> = {
+            messages_count: (acct.messages_count || 0) + 1,
+          };
+          if (contentType === 'audio') {
+            updates.audios_count = (acct.audios_count || 0) + 1;
+          }
+          if (contentType === 'image') {
+            updates.ocr_count = (acct.ocr_count || 0) + 1;
+          }
+
+          await supabaseAdmin().from('accounts').update(updates).eq('id', accountId);
+        }
+
+        // 3. Dispatch AI Auto-Reply if within quota
+        if (!quotaExceeded) {
+          try {
+            await dispatchInboundToAiReply({
+              accountId,
+              conversationId,
+              contactId,
+              configOwnerUserId: ownerUserId,
+            });
+          } catch (aiErr) {
+            console.error('[evolution-webhook] AI reply error:', aiErr);
+          }
+        }
       } else {
         await supabaseAdmin()
           .from('conversations')

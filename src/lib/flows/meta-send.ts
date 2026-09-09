@@ -15,6 +15,7 @@ import {
   phoneVariants,
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils'
+import { sendEvolutionTextMessage } from '@/lib/whatsapp/evolution-api'
 import { supabaseAdmin } from './admin-client'
 
 // ------------------------------------------------------------
@@ -91,9 +92,15 @@ export async function engineSendText(
     throw new Error('WhatsApp not configured for this account')
   }
 
-  const accessToken = decrypt(config.access_token)
+  const isEvolution = config.provider === 'evolution'
+  const instanceName = config.instance_name || `account_${args.accountId}`
 
   const attempt = async (phone: string): Promise<string> => {
+    if (isEvolution) {
+      const evoRes = await sendEvolutionTextMessage(instanceName, phone, args.text)
+      return evoRes.key?.id || `evo_${Date.now()}`
+    }
+    const accessToken = decrypt(config.access_token)
     const r = await sendTextMessage({
       phoneNumberId: config.phone_number_id,
       accessToken,

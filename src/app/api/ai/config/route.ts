@@ -78,8 +78,8 @@ export async function POST(request: Request) {
     if (!body || typeof body !== 'object') return bad('Invalid request body')
 
     const provider = body.provider as AiProvider
-    if (provider !== 'openai' && provider !== 'anthropic' && provider !== 'deepseek') {
-      return bad('provider must be "openai", "anthropic", or "deepseek"')
+    if (provider !== 'openai' && provider !== 'anthropic' && provider !== 'deepseek' && provider !== 'gemini') {
+      return bad('provider must be "openai", "anthropic", "deepseek", or "gemini"')
     }
     const model = typeof body.model === 'string' ? body.model.trim() : ''
     if (!model) return bad('model is required')
@@ -141,6 +141,8 @@ export async function POST(request: Request) {
       } catch {
         return bad('Stored API key could not be decrypted — re-enter your key.')
       }
+    } else if (provider === 'gemini' && process.env.GEMINI_API_KEY) {
+      apiKeyPlain = process.env.GEMINI_API_KEY
     } else {
       return bad('api_key is required')
     }

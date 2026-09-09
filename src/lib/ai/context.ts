@@ -4,17 +4,15 @@ import { aiContextMessageLimit } from './defaults'
 
 interface DbMessage {
   sender_type: 'customer' | 'agent' | 'bot'
+  content_type?: string | null
   content_text: string | null
+  media_url?: string | null
+  media_type?: string | null
 }
 
 /**
- * Fetch the last N text messages of a conversation and map them to the
- * provider-neutral chat shape. Customer messages become `user`; agent
- * and bot messages become `assistant`. Non-text messages (media,
- * templates, interactive) are excluded — they carry no text to model.
- *
- * Ordered oldest-first (chronological) so the transcript reads
- * naturally and the most recent customer message lands last.
+ * Fetch the last N messages of a conversation and map them to the
+ * provider-neutral chat shape. Supports text, image, and audio messages.
  */
 export async function buildConversationContext(
   db: SupabaseClient,
@@ -23,19 +21,47 @@ export async function buildConversationContext(
 ): Promise<ChatMessage[]> {
   const { data, error } = await db
     .from('messages')
-    .select('sender_type, content_text')
+    .select('sender_type, content_type, content_text, media_url, media_type')
     .eq('conversation_id', conversationId)
-    .eq('content_type', 'text')
+    .in('content_type', ['text', 'image', 'audio'])
     .order('created_at', { ascending: false })
     .limit(limit)
 
   if (error) throw error
 
   const rows = ((data ?? []) as DbMessage[]).reverse()
-  return rows
-    .filter((m) => m.content_text && m.content_text.trim())
-    .map((m) => ({
-      role: m.sender_type === 'customer' ? 'user' : 'assistant',
-      content: m.content_text!.trim(),
-    }))
+  return rows.map((m) => {
+    let content = (m.content_text || '').trim()
+    let media = undefined
+
+    if (m.content_type === 'audio') {
+      if (!content) content = '[Nota de voz]'
+      if (m.media_url && m.media_url.startsWith('data:')) {
+        const parts = m.media_url.split(',')
+        const mime = parts[0].split(';')[0].replace('data:', '')
+        media = {
+          type: 'audio' as const,
+          mimeType: mime || m.media_type || 'audio/ogg',
+          base64: parts[1] || '',
+        }
+      }
+    } else if (m.content_type === 'image') {
+      if (!content) content = '[Comprobante de pago / Imagen]'
+      if (m.media_url && m.media_url.startsWith('data:')) {
+        const parts = m.media_url.split(',')
+        const mime = parts[0].split(';')[0].replace('data:', '')
+        media = {
+          type: 'image' as const,
+          mimeType: mime || m.media_type || 'image/jpeg',
+          base64: parts[1] || '',
+        }
+      }
+    }
+
+    return {
+      role: m.sender_type === 'customer' ? ('user' as const) : ('assistant' as const),
+      content,
+      ...(media ? { media } : {}),
+    }
+  })
 }

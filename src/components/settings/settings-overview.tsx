@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
-import { ChevronRight, Loader2 } from 'lucide-react';
+import { ChevronRight, Loader2, Sparkles } from 'lucide-react';
+import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
 
 import { createClient } from '@/lib/supabase/client';
@@ -11,6 +12,7 @@ import { THEMES } from '@/lib/themes';
 import { CURRENCIES } from '@/lib/currency';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 import { SECTION_META, type SettingsSection } from './settings-sections';
@@ -31,6 +33,18 @@ interface WhatsAppStatus {
   connected: boolean;
 }
 
+interface PlanInfo {
+  plan_tier: 'basic' | 'standard' | 'pro';
+  max_agents: number;
+  monthly_message_limit: number;
+  monthly_audio_limit: number;
+  monthly_ocr_limit: number;
+  messages_count: number;
+  audios_count: number;
+  ocr_count: number;
+  extra_messages_balance: number;
+}
+
 export function SettingsOverview({
   onSelect,
 }: {
@@ -45,10 +59,7 @@ export function SettingsOverview({
 
   const [counts, setCounts] = useState<OverviewCounts | null>(null);
   const [countsLoading, setCountsLoading] = useState(true);
-  // WhatsApp status is tracked separately: its health check decrypts the
-  // token and pings Meta, which is far slower than the cheap count
-  // queries. Gating it independently keeps a slow/flaky Meta round-trip
-  // from blanking the rest of the landing.
+  const [planInfo, setPlanInfo] = useState<PlanInfo | null>(null);
   const [whatsapp, setWhatsapp] = useState<WhatsAppStatus | null>(null);
   const [whatsappLoading, setWhatsappLoading] = useState(true);
 
@@ -135,6 +146,16 @@ export function SettingsOverview({
       });
       setWhatsappLoading(false);
     })();
+
+    // Account SaaS plan & usage limits
+    supabase
+      .from('accounts')
+      .select('plan_tier, max_agents, monthly_message_limit, monthly_audio_limit, monthly_ocr_limit, messages_count, audios_count, ocr_count, extra_messages_balance')
+      .eq('id', acctId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled && data) setPlanInfo(data as any);
+      });
 
     return () => {
       cancelled = true;
@@ -248,6 +269,104 @@ export function SettingsOverview({
           </SettingsChip>
         ) : null}
       </Card>
+
+      {/* SaaS Plan & Quotas Banner */}
+      {planInfo && (
+        <Card className="mt-4 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Sparkles className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-semibold text-foreground">
+                    {planInfo.plan_tier === 'pro'
+                      ? 'Plan Empresa (Pro)'
+                      : planInfo.plan_tier === 'standard'
+                      ? 'Plan Comercio (Estándar)'
+                      : 'Plan Emprendedor (Básico)'}
+                  </h3>
+                  <span className="rounded-full bg-primary/15 px-2.5 py-0.5 text-xs font-medium text-primary">
+                    {planInfo.plan_tier === 'pro' ? '$85/mes' : planInfo.plan_tier === 'standard' ? '$45/mes' : '$25/mes'}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Máximo {planInfo.max_agents} usuario(s) · Conexión WhatsApp QR · IA Multimodal Gemini
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs"
+                onClick={() => {
+                  toast.info('Para recargar +500 mensajes ($5) o cambiar de plan, contáctanos a soporte.');
+                }}
+              >
+                +500 Mensajes ($5)
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-3">
+            {/* Mensajes */}
+            <div className="space-y-1.5 rounded-lg border border-border/50 bg-muted/20 p-3">
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Mensajes del mes</span>
+                <span className="font-medium text-foreground">
+                  {planInfo.messages_count} / {planInfo.monthly_message_limit + planInfo.extra_messages_balance}
+                </span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-secondary">
+                <div
+                  className="h-full bg-primary transition-all"
+                  style={{
+                    width: `${Math.min(100, Math.round((planInfo.messages_count / (planInfo.monthly_message_limit + planInfo.extra_messages_balance || 1)) * 100))}%`,
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Audios */}
+            <div className="space-y-1.5 rounded-lg border border-border/50 bg-muted/20 p-3">
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Notas de voz (Audio)</span>
+                <span className="font-medium text-foreground">
+                  {planInfo.audios_count} / {planInfo.monthly_audio_limit}
+                </span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-secondary">
+                <div
+                  className="h-full bg-primary transition-all"
+                  style={{
+                    width: `${Math.min(100, Math.round((planInfo.audios_count / (planInfo.monthly_audio_limit || 1)) * 100))}%`,
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Pago Móvil / OCR */}
+            <div className="space-y-1.5 rounded-lg border border-border/50 bg-muted/20 p-3">
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Lecturas Pago Móvil (OCR)</span>
+                <span className="font-medium text-foreground">
+                  {planInfo.monthly_ocr_limit >= 999999 ? `${planInfo.ocr_count} (Ilimitado)` : `${planInfo.ocr_count} / ${planInfo.monthly_ocr_limit}`}
+                </span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-secondary">
+                <div
+                  className="h-full bg-primary transition-all"
+                  style={{
+                    width: `${planInfo.monthly_ocr_limit >= 999999 ? 15 : Math.min(100, Math.round((planInfo.ocr_count / (planInfo.monthly_ocr_limit || 1)) * 100))}%`,
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Status tiles */}
       <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
