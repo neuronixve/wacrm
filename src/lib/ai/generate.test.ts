@@ -192,3 +192,33 @@ describe('generateReply — Anthropic', () => {
     expect(body.messages).toHaveLength(1)
   })
 })
+
+describe('generateReply — DeepSeek', () => {
+  it('calls deepseek chat completions and returns reply', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        choices: [{ message: { content: '¡Hola! ¿En qué puedo ayudarte hoy?' } }],
+        usage: { prompt_tokens: 25, completion_tokens: 12, total_tokens: 37 },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = await generateReply({
+      config: config({ provider: 'deepseek', model: 'deepseek-chat' }),
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'Hola' }],
+    })
+
+    expect(res).toEqual({
+      text: '¡Hola! ¿En qué puedo ayudarte hoy?',
+      handoff: false,
+      usage: { promptTokens: 25, completionTokens: 12, totalTokens: 37 },
+    })
+    const [url, opts] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://api.deepseek.com/chat/completions')
+    expect(opts.headers.Authorization).toBe('Bearer sk-test')
+    const body = JSON.parse(opts.body)
+    expect(body.model).toBe('deepseek-chat')
+    expect(body.max_tokens).toBe(1024)
+  })
+})
