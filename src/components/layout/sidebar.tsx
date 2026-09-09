@@ -10,6 +10,7 @@ import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
 import {
   Bell,
   Bot,
+  Building2,
   Crown,
   GitBranch,
   LayoutDashboard,
@@ -131,6 +132,9 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     !profileLoading &&
     !!account?.name &&
     account.name !== profile?.full_name;
+
+  const isSuperAdmin =
+    profile?.role === "superadmin" || profile?.email === "sergiovj@gmail.com";
 
   // Close the drawer when route changes — users opened it to navigate,
   // so once they pick a destination the drawer should get out of the way.
@@ -271,6 +275,25 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           <div className="my-4 border-t border-border" />
 
           <ul className="flex flex-col gap-1">
+            {isSuperAdmin && (
+              <li>
+                <Link
+                  href="/saas-clients"
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
+                    pathname.startsWith("/saas-clients")
+                      ? "bg-emerald-500/10 text-emerald-400 font-semibold"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                >
+                  <Building2 className="h-4 w-4 text-emerald-400" />
+                  <span className="flex-1">{t("saasClients")}</span>
+                  <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-bold tracking-wider text-emerald-400">
+                    ADMIN
+                  </span>
+                </Link>
+              </li>
+            )}
             {bottomNavItems.map((item) => {
               const isActive = pathname.startsWith(item.href);
               return (

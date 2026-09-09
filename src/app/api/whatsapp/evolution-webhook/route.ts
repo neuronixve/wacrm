@@ -39,6 +39,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ received: true, ignored: 'unrecognized instance' });
     }
 
+    // Verify account is active (not suspended by Super Admin)
+    const { data: account } = await supabaseAdmin()
+      .from('accounts')
+      .select('is_active')
+      .eq('id', config.account_id)
+      .maybeSingle();
+
+    if (account && account.is_active === false) {
+      console.warn(`[evolution-webhook] Account ${config.account_id} is suspended, ignoring message`);
+      return NextResponse.json({ received: true, ignored: 'account_suspended' });
+    }
+
     // 1. Connection update
     if (event === 'connection.update') {
       const state = data?.state;
