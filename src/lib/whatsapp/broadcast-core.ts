@@ -26,7 +26,8 @@ import {
   phoneVariants,
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils';
-import { resolveTemplateRow } from '@/lib/whatsapp/template-body';
+import { resolveTemplateRow, templateContentText } from '@/lib/whatsapp/template-body';
+import { sendEvolutionTextMessage } from '@/lib/whatsapp/evolution-api';
 import type { MessageTemplate } from '@/types';
 import { findOrCreateContact } from '@/lib/api/v1/contacts';
 
@@ -66,12 +67,16 @@ export interface BroadcastPlan {
   broadcastId: string;
   templateName: string;
   templateLanguage: string;
-  phoneNumberId: string;
-  accessToken: string;
+  phoneNumberId?: string;
+  accessToken?: string;
   templateRow: MessageTemplate | null;
   planned: PlannedRecipient[];
   /** Phones rejected up front (invalid E.164) — counted as failed. */
   rejected: number;
+  provider?: 'meta' | 'evolution';
+  instanceName?: string;
+  antibanDelayMin?: number;
+  antibanDelayMax?: number;
 }
 
 const MAX_RECIPIENTS = 1000;
@@ -115,14 +120,26 @@ export async function createBroadcast(
     .select('*')
     .eq('account_id', accountId)
     .single();
-  if (configError || !config) {
+  const isEvolution = config.provider === 'evolution';
+  if (isEvolution && !config.instance_name) {
     throw new BroadcastError(
       'whatsapp_not_configured',
-      'WhatsApp not configured. Please set up your WhatsApp integration first.',
+      'WhatsApp QR is not configured. Please scan the QR code in Settings.',
       400
     );
   }
-  const accessToken = decrypt(config.access_token);
+
+  let accessToken = '';
+  if (!isEvolution) {
+    if (!config.access_token || !config.phone_number_id) {
+      throw new BroadcastError(
+        'whatsapp_not_configured',
+        'Meta Cloud API credentials missing. Please configure WhatsApp in Settings.',
+        400
+      );
+    }
+    accessToken = decrypt(config.access_token);
+  }
 
   // Template row (once) for header/button components; guard a
   // malformed local row rather than N identical opaque failures.
@@ -234,11 +251,15 @@ export async function createBroadcast(
     broadcastId,
     templateName,
     templateLanguage: resolvedTemplate.language,
-    phoneNumberId: config.phone_number_id,
+    phoneNumberId: config.phone_number_id || '',
     accessToken,
     templateRow,
     planned,
     rejected,
+    provider: config.provider || 'meta',
+    instanceName: config.instance_name || '',
+    antibanDelayMin: config.antiban_delay_min ?? 5,
+    antibanDelayMax: config.antiban_delay_max ?? 12,
   };
 }
 
@@ -259,30 +280,58 @@ export async function deliverBroadcast(
   db: SupabaseClient,
   plan: BroadcastPlan
 ): Promise<void> {
-  for (const recipient of plan.planned) {
-    const variants = phoneVariants(recipient.phone);
+  const isEvolution = plan.provider === 'evolution';
+
+  for (let i = 0; i < plan.planned.length; i++) {
+    const recipient = plan.planned[i];
+
+    // Anti-ban delay between broadcast recipients when sending via QR (Evolution API)
+    if (i > 0 && isEvolution && plan.antibanDelayMin) {
+      const min = plan.antibanDelayMin;
+      const max = Math.max(min, plan.antibanDelayMax || min);
+      const delaySec = Math.floor(Math.random() * (max - min + 1)) + min;
+      await new Promise((r) => setTimeout(r, delaySec * 1000));
+    }
+
     let sentMessageId: string | null = null;
     let lastError: string | null = null;
 
-    for (const variant of variants) {
+    if (isEvolution) {
       try {
-        const result = await sendTemplateMessage({
-          phoneNumberId: plan.phoneNumberId,
-          accessToken: plan.accessToken,
-          to: variant,
-          templateName: plan.templateName,
-          language: plan.templateLanguage,
-          template: plan.templateRow ?? undefined,
-          params: recipient.params,
-        });
-        sentMessageId = result.messageId;
-        lastError = null;
-        break;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        lastError = message;
-        // Only a "recipient not allowed" error is worth another variant.
-        if (!isRecipientNotAllowedError(message)) break;
+        const textBody =
+          templateContentText(plan.templateRow, recipient.params) ||
+          plan.templateRow?.body_text ||
+          plan.templateName;
+        const result = await sendEvolutionTextMessage(
+          plan.instanceName!,
+          recipient.phone,
+          textBody
+        );
+        sentMessageId = result.key?.id || `evo_bc_${Date.now()}`;
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : 'Evolution API error';
+      }
+    } else {
+      const variants = phoneVariants(recipient.phone);
+      for (const variant of variants) {
+        try {
+          const result = await sendTemplateMessage({
+            phoneNumberId: plan.phoneNumberId!,
+            accessToken: plan.accessToken!,
+            to: variant,
+            templateName: plan.templateName,
+            language: plan.templateLanguage,
+            template: plan.templateRow ?? undefined,
+            params: recipient.params,
+          });
+          sentMessageId = result.messageId;
+          lastError = null;
+          break;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          lastError = message;
+          if (!isRecipientNotAllowedError(message)) break;
+        }
       }
     }
 

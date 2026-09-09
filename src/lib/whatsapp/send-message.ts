@@ -48,6 +48,10 @@ import {
   templateBodyParams,
   templateContentText,
 } from '@/lib/whatsapp/template-body';
+import {
+  sendEvolutionTextMessage,
+  sendEvolutionMediaMessage,
+} from '@/lib/whatsapp/evolution-api';
 
 export const MEDIA_KINDS = ['image', 'video', 'document', 'audio'] as const;
 export const VALID_MESSAGE_TYPES = [
@@ -266,22 +270,42 @@ export async function sendMessageToConversation(
     );
   }
 
-  const accessToken = decrypt(config.access_token);
+  const isEvolution = config.provider === 'evolution';
 
-  // Self-heal legacy CBC ciphertexts. Fire-and-forget; idempotent.
-  if (isLegacyFormat(config.access_token)) {
-    void db
-      .from('whatsapp_config')
-      .update({ access_token: encrypt(accessToken) })
-      .eq('id', config.id)
-      .then(({ error }: { error: { message: string } | null }) => {
-        if (error) {
-          console.warn(
-            '[send-message] access_token GCM upgrade failed:',
-            error.message
-          );
-        }
-      });
+  if (isEvolution && !config.instance_name) {
+    throw new SendMessageError(
+      'whatsapp_not_configured',
+      'WhatsApp QR is not configured. Please scan the QR code in Settings.',
+      400
+    );
+  }
+
+  let accessToken = '';
+  if (!isEvolution) {
+    if (!config.access_token) {
+      throw new SendMessageError(
+        'whatsapp_not_configured',
+        'Meta Cloud API access token is missing.',
+        400
+      );
+    }
+    accessToken = decrypt(config.access_token);
+
+    // Self-heal legacy CBC ciphertexts. Fire-and-forget; idempotent.
+    if (isLegacyFormat(config.access_token)) {
+      void db
+        .from('whatsapp_config')
+        .update({ access_token: encrypt(accessToken) })
+        .eq('id', config.id)
+        .then(({ error }: { error: { message: string } | null }) => {
+          if (error) {
+            console.warn(
+              '[send-message] access_token GCM upgrade failed:',
+              error.message
+            );
+          }
+        });
+    }
   }
 
   // Resolve the reply target to its Meta message_id. The parent must
@@ -337,6 +361,43 @@ export async function sendMessageToConversation(
   }
 
   const attempt = async (phone: string): Promise<string> => {
+    if (isEvolution) {
+      const instanceName = config.instance_name!;
+      if (messageType === 'template') {
+        const textBody =
+          templateContentText(
+            templateRow,
+            templateBodyParams(templateParams, templateMessageParams)
+          ) || contentText || templateName || '';
+        const result = await sendEvolutionTextMessage(instanceName, phone, textBody);
+        return result.key?.id || `evo_${Date.now()}`;
+      }
+      if (isMediaKind) {
+        const result = await sendEvolutionMediaMessage(
+          instanceName,
+          phone,
+          mediaUrl!,
+          contentText || undefined,
+          messageType as any,
+          filename || undefined
+        );
+        return result.key?.id || `evo_${Date.now()}`;
+      }
+      if (messageType === 'interactive') {
+        const p = interactivePayload!;
+        let textToSend = p.body;
+        if (p.header) textToSend = `*${p.header}*\n\n${textToSend}`;
+        if (p.footer) textToSend = `${textToSend}\n\n_${p.footer}_`;
+        if (p.kind === 'buttons' && p.buttons?.length) {
+          textToSend += '\n' + p.buttons.map((b, idx) => `[${idx + 1}] ${b.title}`).join('\n');
+        }
+        const result = await sendEvolutionTextMessage(instanceName, phone, textToSend);
+        return result.key?.id || `evo_${Date.now()}`;
+      }
+      const result = await sendEvolutionTextMessage(instanceName, phone, contentText!);
+      return result.key?.id || `evo_${Date.now()}`;
+    }
+
     if (messageType === 'template') {
       const result = await sendTemplateMessage({
         phoneNumberId: config.phone_number_id,

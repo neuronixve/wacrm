@@ -13,6 +13,7 @@ import {
   Zap,
   AlertTriangle,
   RotateCcw,
+  QrCode,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
@@ -24,6 +25,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Switch } from '@/components/ui/switch';
 import { SettingsPanelHead } from './settings-panel-head';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { WhatsAppQrPanel } from './whatsapp-qr-panel';
 import {
   Accordion,
   AccordionItem,
@@ -437,9 +440,27 @@ export function WhatsAppConfig() {
         title={t("title")}
         description={t("description")}
       />
-      <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-      {/* Main config form */}
-      <div className="space-y-6">
+
+      <Tabs defaultValue="qr" className="w-full">
+        <TabsList className="mb-6 grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="qr" className="gap-2">
+            <QrCode className="size-4" />
+            WhatsApp QR (Evolution)
+          </TabsTrigger>
+          <TabsTrigger value="meta" className="gap-2">
+            <Zap className="size-4" />
+            Meta API Oficial
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="qr">
+          <WhatsAppQrPanel canEditSettings={canEditSettings} />
+        </TabsContent>
+
+        <TabsContent value="meta">
+          <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
+          {/* Main config form */}
+          <div className="space-y-6">
         {/* Corrupted-token reset banner */}
         {showResetBanner && (
           <Alert className="bg-amber-950/40 border-amber-600/40">
@@ -916,6 +937,8 @@ export function WhatsAppConfig() {
         </Card>
       </div>
     </div>
+        </TabsContent>
+      </Tabs>
     </section>
   );
 }
