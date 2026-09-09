@@ -2,11 +2,10 @@
 
 # ---------------------------------------------------------------
 # Stage 1 — install dependencies (cached until package*.json change)
-# ---------------------------------------------------------------
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm install
 
 # ---------------------------------------------------------------
 # Stage 2 — build
