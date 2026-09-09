@@ -36,7 +36,14 @@ export interface EvolutionSendMessageResult {
  * Strips non-digits and leading + to format phone number for Baileys/Evolution API
  */
 export function formatPhoneNumberForEvolution(phone: string): string {
+  if (phone.includes('@lid') || phone.includes('@g.us') || phone.includes('@s.whatsapp.net')) {
+    return phone;
+  }
   const digits = phone.replace(/\D/g, '');
+  // WhatsApp LIDs (Linked Identifiers) are 14-16 digits (e.g. 51874816344264)
+  if (digits.length >= 14 && digits.length <= 16) {
+    return `${digits}@lid`;
+  }
   return digits;
 }
 
@@ -62,8 +69,20 @@ async function evolutionFetch<T>(endpoint: string, options: RequestInit = {}): P
   }
 
   if (!res.ok) {
-    const errorMsg = data?.response?.message || data?.message || res.statusText || 'Evolution API request failed';
-    throw new Error(Array.isArray(errorMsg) ? errorMsg.join(', ') : String(errorMsg));
+    let errorMsg = '';
+    const rawMessage = data?.response?.message || data?.message;
+    if (Array.isArray(rawMessage)) {
+      errorMsg = rawMessage
+        .map((m: any) => (typeof m === 'object' ? JSON.stringify(m) : String(m)))
+        .join(', ');
+    } else if (rawMessage && typeof rawMessage === 'object') {
+      errorMsg = JSON.stringify(rawMessage);
+    } else if (rawMessage) {
+      errorMsg = String(rawMessage);
+    } else {
+      errorMsg = res.statusText || 'Evolution API request failed';
+    }
+    throw new Error(errorMsg);
   }
 
   return data as T;
