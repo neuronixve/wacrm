@@ -34,7 +34,7 @@ interface WhatsAppStatus {
 }
 
 interface PlanInfo {
-  plan_tier: 'basic' | 'standard' | 'pro';
+  plan_tier: 'basic' | 'standard' | 'pro' | 'export';
   max_agents: number;
   monthly_message_limit: number;
   monthly_audio_limit: number;
@@ -281,18 +281,28 @@ export function SettingsOverview({
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-base font-semibold text-foreground">
-                    {planInfo.plan_tier === 'pro'
+                    {planInfo.plan_tier === 'export'
+                      ? 'Plan Exportador (Comercio Int.)'
+                      : planInfo.plan_tier === 'pro'
                       ? 'Plan Empresa (Pro)'
                       : planInfo.plan_tier === 'standard'
                       ? 'Plan Comercio (Estándar)'
                       : 'Plan Emprendedor (Básico)'}
                   </h3>
                   <span className="rounded-full bg-primary/15 px-2.5 py-0.5 text-xs font-medium text-primary">
-                    {planInfo.plan_tier === 'pro' ? '$85/mes' : planInfo.plan_tier === 'standard' ? '$45/mes' : '$25/mes'}
+                    {planInfo.plan_tier === 'export'
+                      ? '$120/mes'
+                      : planInfo.plan_tier === 'pro'
+                      ? '$85/mes'
+                      : planInfo.plan_tier === 'standard'
+                      ? '$45/mes'
+                      : '$25/mes'}
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Máximo {planInfo.max_agents} usuario(s) · Conexión WhatsApp QR · IA Multimodal Gemini
+                  {planInfo.plan_tier === 'export'
+                    ? `Máximo ${planInfo.max_agents} usuarios · IA Multilingüe B2B · Fichas Técnicas PDF · Agendamiento Google Calendar`
+                    : `Máximo ${planInfo.max_agents} usuario(s) · Conexión WhatsApp QR · IA Multimodal Gemini`}
                 </p>
               </div>
             </div>

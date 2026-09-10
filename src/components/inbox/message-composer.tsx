@@ -22,6 +22,7 @@ import {
   Plus,
   MessageSquareDashed,
   Zap,
+  Globe,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GatedButton } from "@/components/ui/gated-button";
@@ -146,6 +147,7 @@ export function MessageComposer({
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [drafting, setDrafting] = useState(false);
+  const [translating, setTranslating] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Interactive-message builder dialog + quick-reply picker.
@@ -297,6 +299,43 @@ export function MessageComposer({
       setDrafting(false);
     }
   }, [drafting, conversationId, adjustHeight]);
+
+  const handleTranslateDraft = useCallback(async () => {
+    const trimmed = text.trim();
+    if (!trimmed || translating) return;
+
+    setTranslating(true);
+    try {
+      const res = await fetch("/api/ai/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: trimmed,
+          conversationId,
+          targetLang: "buyer",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.translatedText) {
+        toast.error(data.error || "No se pudo traducir el mensaje.");
+        return;
+      }
+      setText(data.translatedText);
+      toast.success("Mensaje traducido al idioma del comprador.");
+      requestAnimationFrame(() => {
+        adjustHeight();
+        const el = textareaRef.current;
+        if (el) {
+          el.focus();
+          el.setSelectionRange(el.value.length, el.value.length);
+        }
+      });
+    } catch {
+      toast.error("Error de conexión al traducir el mensaje.");
+    } finally {
+      setTranslating(false);
+    }
+  }, [text, translating, conversationId, adjustHeight]);
 
   // ---- Interactive message + quick replies --------------------------
 
@@ -749,6 +788,27 @@ export function MessageComposer({
               (sessionExpired || readOnly) && "cursor-not-allowed opacity-50"
             )}
           />
+
+          {text.trim().length > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={translating || sending || sessionExpired}
+              onClick={handleTranslateDraft}
+              title="Traducir mensaje al idioma del comprador internacional antes de enviar"
+              className="h-9 px-2.5 shrink-0 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 gap-1.5 text-xs font-medium"
+            >
+              {translating ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Globe className="h-3.5 w-3.5" />
+              )}
+              <span className="hidden sm:inline">
+                {translating ? "Traduciendo..." : "Traducir"}
+              </span>
+            </Button>
+          )}
 
           <GatedButton
             size="sm"

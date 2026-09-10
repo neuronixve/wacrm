@@ -73,6 +73,7 @@ export async function GET() {
       basic: 25,
       standard: 45,
       pro: 85,
+      export: 120,
     };
 
     let totalActive = 0;
@@ -135,7 +136,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!['basic', 'standard', 'pro'].includes(planTier)) {
+    if (!['basic', 'standard', 'pro', 'export'].includes(planTier)) {
       return NextResponse.json({ error: 'Plan inválido' }, { status: 400 });
     }
 

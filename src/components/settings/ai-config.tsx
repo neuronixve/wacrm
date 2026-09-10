@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Loader2, Sparkles, CheckCircle2, Trash2, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Sparkles, CheckCircle2, Trash2, Eye, EyeOff, Globe, Calendar } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { canEditSettings } from '@/lib/auth/roles';
 import { Button } from '@/components/ui/button';
@@ -63,15 +63,19 @@ export function AiConfig() {
   const [removing, setRemoving] = useState(false);
 
   const [configured, setConfigured] = useState(false);
-  const [provider, setProvider] = useState<AiProvider>('openai');
-  const [model, setModel] = useState(AI_PROVIDER_DEFAULT_MODEL.openai);
-  const [apiKey, setApiKey] = useState('');
-  const [keyEdited, setKeyEdited] = useState(false);
   const [showKey, setShowKey] = useState(false);
+  const [showEmbeddingsKey, setShowEmbeddingsKey] = useState(false);
+
+  const [provider, setProvider] = useState<AiProvider>('gemini');
+  const [model, setModel] = useState(AI_PROVIDER_DEFAULT_MODEL.gemini);
+  const [apiKey, setApiKey] = useState('');
   const [hasStoredKey, setHasStoredKey] = useState(false);
+  const [keyEdited, setKeyEdited] = useState(false);
+
   const [embeddingsKey, setEmbeddingsKey] = useState('');
-  const [embeddingsKeyEdited, setEmbeddingsKeyEdited] = useState(false);
   const [hasStoredEmbeddingsKey, setHasStoredEmbeddingsKey] = useState(false);
+  const [embeddingsKeyEdited, setEmbeddingsKeyEdited] = useState(false);
+
   const [systemPrompt, setSystemPrompt] = useState('');
   const [isActive, setIsActive] = useState(false);
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
@@ -79,6 +83,11 @@ export function AiConfig() {
   // Empty string = leave unassigned (shared queue).
   const [handoffAgentId, setHandoffAgentId] = useState('');
   const [members, setMembers] = useState<AccountMember[]>([]);
+
+  // Plan Exportador / International B2B states
+  const [bookingCalendarUrl, setBookingCalendarUrl] = useState('');
+  const [isExportMode, setIsExportMode] = useState(false);
+  const [isExportPlan, setIsExportPlan] = useState(false);
 
   // Guard keyed on the account (not a bare boolean) so an in-place
   // account switch — ownership transfer, multi-account membership —
@@ -95,6 +104,10 @@ export function AiConfig() {
         toast.error(data.error ?? t('loadFailed'));
         return;
       }
+      setIsExportPlan(Boolean(data.is_export_plan));
+      setIsExportMode(Boolean(data.is_export_mode || data.is_export_plan));
+      setBookingCalendarUrl(data.booking_calendar_url ?? '');
+
       if (data.configured) {
         setConfigured(true);
         setProvider(data.provider);
@@ -116,7 +129,7 @@ export function AiConfig() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!accountId || loadedAccountIdRef.current === accountId) return;
@@ -155,6 +168,8 @@ export function AiConfig() {
     auto_reply_enabled: autoReplyEnabled,
     auto_reply_max_per_conversation: maxPerConversation,
     handoff_agent_id: handoffAgentId || null,
+    booking_calendar_url: bookingCalendarUrl.trim() || null,
+    is_export_mode: isExportMode,
   });
 
   const handleTest = async () => {
@@ -488,6 +503,65 @@ export function AiConfig() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Plan Exportador / Comercio Internacional & Agendamiento */}
+        <Card className="border-border bg-card">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Globe className="h-5 w-5 text-emerald-400" />
+                <CardTitle className="text-base font-medium text-foreground">
+                  Comercio Internacional & Agendamiento B2B
+                </CardTitle>
+              </div>
+              {isExportPlan && (
+                <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-400 border border-emerald-500/30">
+                  Plan Exportador Activo
+                </span>
+              )}
+            </div>
+            <CardDescription>
+              Configuración de atención multilingüe para compradores extranjeros y agendamiento directo de videollamadas con el Gerente Exportador.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="booking-calendar-url" className="flex items-center gap-1.5">
+                <Calendar className="h-4 w-4 text-emerald-400" />
+                Enlace de Agendamiento (Google Calendar / Meet / Calendly)
+              </Label>
+              <Input
+                id="booking-calendar-url"
+                type="url"
+                value={bookingCalendarUrl}
+                onChange={(e) => setBookingCalendarUrl(e.target.value)}
+                placeholder="https://calendar.app.google/... o https://calendly.com/..."
+                className="font-mono text-xs"
+                disabled={disabled}
+              />
+              <p className="text-xs text-muted-foreground">
+                Cuando el importador confirme su interés comercial y volumen requerido, la IA le compartirá este enlace en su idioma nativo para agendar una videollamada.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg border border-border p-3">
+              <div className="space-y-0.5">
+                <Label htmlFor="export-mode-toggle" className="text-sm font-medium">
+                  Modo Exportador B2B Multilingüe
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Detecta el idioma del importador (inglés, mandarín, árabe, francés, etc.) y califica volumen (toneladas/contenedores), Incoterms (FOB/CIF) y puerto de destino.
+                </p>
+              </div>
+              <Switch
+                id="export-mode-toggle"
+                checked={isExportMode || isExportPlan}
+                onCheckedChange={(checked) => setIsExportMode(checked)}
+                disabled={disabled || isExportPlan}
+              />
             </div>
           </CardContent>
         </Card>

@@ -12,10 +12,12 @@ interface AiConfigRow {
   auto_reply_max_per_conversation: number
   handoff_agent_id: string | null
   embeddings_api_key: string | null
+  booking_calendar_url?: string | null
+  is_export_mode?: boolean | null
 }
 
 const CONFIG_COLUMNS =
-  'provider, model, api_key, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, embeddings_api_key'
+  'provider, model, api_key, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, embeddings_api_key, booking_calendar_url, is_export_mode'
 
 /**
  * Load and decrypt the account's AI config for *use* (draft or
@@ -41,6 +43,16 @@ export async function loadAiConfig(
     .maybeSingle()
 
   if (error) throw error
+
+  // Retrieve account plan_tier and booking_calendar_url to determine export capabilities
+  const { data: accountRow } = await db
+    .from('accounts')
+    .select('plan_tier, booking_calendar_url')
+    .eq('id', accountId)
+    .maybeSingle()
+
+  const isExportPlan = accountRow?.plan_tier === 'export'
+
   if (!data) {
     // Platform-wide Gemini fallback if no custom config exists yet
     if (process.env.GEMINI_API_KEY) {
@@ -54,6 +66,9 @@ export async function loadAiConfig(
         autoReplyMaxPerConversation: 10,
         handoffAgentId: null,
         embeddingsApiKey: null,
+        bookingCalendarUrl: accountRow?.booking_calendar_url || null,
+        isExportPlan,
+        isExportMode: isExportPlan,
       }
     }
     return null
@@ -97,6 +112,9 @@ export async function loadAiConfig(
     }
   }
 
+  const bookingCalendarUrl = row.booking_calendar_url || accountRow?.booking_calendar_url || null
+  const isExportMode = isExportPlan || Boolean(row.is_export_mode)
+
   return {
     provider: row.provider,
     model: row.model || 'gemini-2.0-flash',
@@ -107,6 +125,9 @@ export async function loadAiConfig(
     autoReplyMaxPerConversation: row.auto_reply_max_per_conversation,
     handoffAgentId: row.handoff_agent_id,
     embeddingsApiKey,
+    bookingCalendarUrl,
+    isExportPlan,
+    isExportMode,
   }
 }
 

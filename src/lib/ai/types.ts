@@ -29,6 +29,11 @@ export interface AiConfig {
    *  knowledge base is embedded and semantic retrieval turns on; when
    *  null, retrieval falls back to lexical full-text search. */
   embeddingsApiKey: string | null
+  /** Optional booking or Google Calendar appointment page for qualified buyers. */
+  bookingCalendarUrl?: string | null
+  /** True when the account has the 'export' plan tier or export mode is activated. */
+  isExportPlan?: boolean
+  isExportMode?: boolean
 }
 
 export interface ChatMessageMedia {

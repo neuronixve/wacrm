@@ -30,9 +30,15 @@ export async function GET() {
       // `api_key` is selected only to derive `has_key` — it is stripped
       // out below and never returned to the client.
       .select(
-        'provider, model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, api_key, embeddings_api_key',
+        'provider, model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, api_key, embeddings_api_key, booking_calendar_url, is_export_mode',
       )
       .eq('account_id', accountId)
+      .maybeSingle()
+
+    const { data: accountRow } = await supabase
+      .from('accounts')
+      .select('plan_tier, booking_calendar_url')
+      .eq('id', accountId)
       .maybeSingle()
 
     if (error) {
@@ -43,14 +49,26 @@ export async function GET() {
       )
     }
 
-    if (!data) return NextResponse.json({ configured: false })
+    const isExportPlan = accountRow?.plan_tier === 'export'
+
+    if (!data) {
+      return NextResponse.json({
+        configured: false,
+        plan_tier: accountRow?.plan_tier || 'basic',
+        is_export_plan: isExportPlan,
+        booking_calendar_url: accountRow?.booking_calendar_url || null,
+      })
+    }
     // The keys are selected only to derive the has_* flags; neither is
     // returned to the client.
-    const { api_key, embeddings_api_key, ...safe } = data
+    const { api_key, embeddings_api_key, booking_calendar_url, ...safe } = data
     return NextResponse.json({
       configured: true,
       has_key: !!api_key,
       has_embeddings_key: !!embeddings_api_key,
+      plan_tier: accountRow?.plan_tier || 'basic',
+      is_export_plan: isExportPlan,
+      booking_calendar_url: booking_calendar_url || accountRow?.booking_calendar_url || null,
       ...safe,
     })
   } catch (err) {
@@ -215,6 +233,18 @@ export async function POST(request: Request) {
       shared.embeddings_api_key = encrypt(rawEmbeddingsKey)
     } else if (clearEmbeddingsKey) {
       shared.embeddings_api_key = null
+    }
+
+    if (typeof body.booking_calendar_url === 'string') {
+      const cleanUrl = body.booking_calendar_url.trim() || null
+      shared.booking_calendar_url = cleanUrl
+      await supabase
+        .from('accounts')
+        .update({ booking_calendar_url: cleanUrl })
+        .eq('id', accountId)
+    }
+    if (typeof body.is_export_mode === 'boolean') {
+      shared.is_export_mode = body.is_export_mode
     }
 
     if (existing) {

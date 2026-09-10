@@ -102,6 +102,8 @@ export async function POST(request: Request) {
       userPrompt: config.systemPrompt,
       mode: 'draft',
       knowledge,
+      isExportMode: config.isExportMode,
+      bookingCalendarUrl: config.bookingCalendarUrl,
     })
 
     const { text, usage } = await generateReply({ config, systemPrompt, messages })

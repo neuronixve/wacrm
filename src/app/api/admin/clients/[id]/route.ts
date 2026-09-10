@@ -43,7 +43,7 @@ export async function PATCH(
       updates.phone = phone ? phone.trim() : null;
     }
 
-    if (['basic', 'standard', 'pro'].includes(plan_tier)) {
+    if (['basic', 'standard', 'pro', 'export'].includes(plan_tier)) {
       updates.plan_tier = plan_tier;
     }
 

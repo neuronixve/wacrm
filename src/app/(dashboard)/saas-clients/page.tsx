@@ -70,7 +70,7 @@ interface ClientAccount {
   name: string;
   phone: string | null;
   created_at: string;
-  plan_tier: 'basic' | 'standard' | 'pro';
+  plan_tier: 'basic' | 'standard' | 'pro' | 'export';
   is_active: boolean;
   payment_status: 'paid' | 'pending' | 'overdue' | 'cancelled';
   payment_notes: string | null;
@@ -102,7 +102,7 @@ interface PlatformMetrics {
 }
 
 const PLAN_META: Record<
-  'basic' | 'standard' | 'pro',
+  'basic' | 'standard' | 'pro' | 'export',
   { name: string; price: number; dailyConv: number; color: string; badgeClass: string }
 > = {
   basic: {
@@ -125,6 +125,13 @@ const PLAN_META: Record<
     dailyConv: 400,
     color: '#f59e0b',
     badgeClass: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+  },
+  export: {
+    name: 'Plan Exportador',
+    price: 120,
+    dailyConv: 250,
+    color: '#10b981',
+    badgeClass: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
   },
 };
 
@@ -150,7 +157,7 @@ export default function SaasClientsPage() {
   const [newOwnerName, setNewOwnerName] = useState('');
   const [newOwnerEmail, setNewOwnerEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [newPlanTier, setNewPlanTier] = useState<'basic' | 'standard' | 'pro'>('basic');
+  const [newPlanTier, setNewPlanTier] = useState<'basic' | 'standard' | 'pro' | 'export'>('basic');
   const [newCycleDays, setNewCycleDays] = useState('30');
   const [newPaymentNotes, setNewPaymentNotes] = useState('');
 
@@ -166,7 +173,7 @@ export default function SaasClientsPage() {
 
   // Change Plan & Notes Dialogs
   const [isChangePlanOpen, setIsChangePlanOpen] = useState(false);
-  const [targetPlan, setTargetPlan] = useState<'basic' | 'standard' | 'pro'>('basic');
+  const [targetPlan, setTargetPlan] = useState<'basic' | 'standard' | 'pro' | 'export'>('basic');
   const [actionLoading, setActionLoading] = useState(false);
 
   const [isNotesOpen, setIsNotesOpen] = useState(false);
@@ -551,6 +558,7 @@ export default function SaasClientsPage() {
               <SelectItem value="basic">Emprendedor (50 conv/d)</SelectItem>
               <SelectItem value="standard">Comercio (150 conv/d)</SelectItem>
               <SelectItem value="pro">Empresa (400 conv/d)</SelectItem>
+              <SelectItem value="export">Plan Exportador (250 conv/d - $120/m)</SelectItem>
             </SelectContent>
           </Select>
 
@@ -930,6 +938,9 @@ export default function SaasClientsPage() {
                     <SelectItem value="pro">
                       Plan Empresa Pro (400 conv/día - $85/m)
                     </SelectItem>
+                    <SelectItem value="export">
+                      Plan Exportador ($120/m - Multilingüe B2B & Google Calendar)
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1115,6 +1126,9 @@ export default function SaasClientsPage() {
                   </SelectItem>
                   <SelectItem value="pro">
                     Plan Empresa ($85/m) • 400 conv/día • 2.500 audios • 10 agentes
+                  </SelectItem>
+                  <SelectItem value="export">
+                    Plan Exportador ($120/m) • 250 conv/día • 1.500 audios • 5 agentes • Multilingüe B2B
                   </SelectItem>
                 </SelectContent>
               </Select>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { Message, MessageReaction } from "@/types";
 import {
@@ -11,6 +12,8 @@ import {
   LayoutTemplate,
   CornerDownLeft,
   Sparkles,
+  Globe,
+  Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
@@ -57,6 +60,95 @@ function StatusIcon({ status }: { status: Message["status"] }) {
   }
 }
 
+function TextMessageContent({
+  text,
+  isAgent,
+}: {
+  text: string;
+  isAgent: boolean;
+}) {
+  const [translatedText, setTranslatedText] = useState<string | null>(null);
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [showTranslation, setShowTranslation] = useState(false);
+
+  const handleTranslate = async () => {
+    if (translatedText) {
+      setShowTranslation(!showTranslation);
+      return;
+    }
+    setIsTranslating(true);
+    try {
+      const res = await fetch("/api/ai/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, targetLang: "es" }),
+      });
+      const data = await res.json();
+      if (res.ok && data.translatedText) {
+        setTranslatedText(data.translatedText);
+        setShowTranslation(true);
+      }
+    } catch (e) {
+      console.error("Translation failed:", e);
+    } finally {
+      setIsTranslating(false);
+    }
+  };
+
+  return (
+    <div className="space-y-1">
+      <p className="whitespace-pre-wrap break-words text-sm">
+        {text}
+      </p>
+
+      {/* Exporter Trade translation trigger */}
+      {text.length > 5 && (
+        <div className="flex items-center gap-1 pt-0.5">
+          <button
+            type="button"
+            onClick={handleTranslate}
+            disabled={isTranslating}
+            className={cn(
+              "inline-flex items-center gap-1 text-[10px] opacity-75 hover:opacity-100 transition-opacity rounded px-1.5 py-0.5 border cursor-pointer",
+              isAgent
+                ? "border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10"
+                : "border-border text-foreground hover:bg-muted"
+            )}
+          >
+            {isTranslating ? (
+              <Loader2 className="h-2.5 w-2.5 animate-spin" />
+            ) : (
+              <Globe className="h-2.5 w-2.5 text-emerald-400" />
+            )}
+            <span>
+              {isTranslating
+                ? "Traduciendo..."
+                : showTranslation
+                ? "Ocultar traducción"
+                : "Traducir al español"}
+            </span>
+          </button>
+        </div>
+      )}
+
+      {showTranslation && translatedText && (
+        <div
+          className={cn(
+            "rounded-md p-2 text-xs border border-emerald-500/30 bg-emerald-500/10 text-foreground",
+            isAgent && "bg-primary-foreground/15 text-primary-foreground border-primary-foreground/30"
+          )}
+        >
+          <div className="flex items-center gap-1 text-[10px] font-semibold text-emerald-400 mb-0.5">
+            <Globe className="h-3 w-3" />
+            <span>Traducción al Español:</span>
+          </div>
+          <p className="whitespace-pre-wrap text-xs">{translatedText}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MessageContent({
   message,
   t,
@@ -75,11 +167,7 @@ function MessageContent({
 
   switch (message.content_type) {
     case "text":
-      return (
-        <p className="whitespace-pre-wrap break-words text-sm">
-          {message.content_text}
-        </p>
-      );
+      return <TextMessageContent text={message.content_text || ""} isAgent={isAgent} />;
 
     case "image":
       return (
@@ -90,9 +178,9 @@ function MessageContent({
             <MediaUnavailable label={t("photo")} t={t} />
           )}
           {message.content_text && (
-            <p className="mt-1 whitespace-pre-wrap break-words text-sm">
-              {message.content_text}
-            </p>
+            <div className="mt-1">
+              <TextMessageContent text={message.content_text} isAgent={isAgent} />
+            </div>
           )}
         </div>
       );
