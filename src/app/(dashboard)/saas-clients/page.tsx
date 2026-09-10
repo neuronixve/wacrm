@@ -26,6 +26,9 @@ import {
   Sliders,
   Check,
   Loader2,
+  Phone,
+  Edit3,
+  Lock,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -65,16 +68,19 @@ import { useAuth } from '@/hooks/use-auth';
 interface ClientAccount {
   id: string;
   name: string;
+  phone: string | null;
   created_at: string;
   plan_tier: 'basic' | 'standard' | 'pro';
   is_active: boolean;
   payment_status: 'paid' | 'pending' | 'overdue' | 'cancelled';
   payment_notes: string | null;
   max_agents: number;
-  monthly_message_limit: number;
+  daily_conversation_limit: number;
+  daily_conversations_count: number;
+  monthly_conversations_count: number;
+  monthly_conversation_limit: number;
   monthly_audio_limit: number;
   monthly_ocr_limit: number;
-  messages_count: number;
   audios_count: number;
   ocr_count: number;
   extra_messages_balance: number;
@@ -97,23 +103,26 @@ interface PlatformMetrics {
 
 const PLAN_META: Record<
   'basic' | 'standard' | 'pro',
-  { name: string; price: number; color: string; badgeClass: string }
+  { name: string; price: number; dailyConv: number; color: string; badgeClass: string }
 > = {
   basic: {
     name: 'Plan Emprendedor',
     price: 25,
+    dailyConv: 50,
     color: '#3b82f6',
     badgeClass: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
   },
   standard: {
     name: 'Plan Comercio',
     price: 45,
+    dailyConv: 150,
     color: '#8b5cf6',
     badgeClass: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
   },
   pro: {
     name: 'Plan Empresa',
     price: 85,
+    dailyConv: 400,
     color: '#f59e0b',
     badgeClass: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
   },
@@ -137,6 +146,7 @@ export default function SaasClientsPage() {
 
   // New Client Form
   const [newCompany, setNewCompany] = useState('');
+  const [newPhone, setNewPhone] = useState('');
   const [newOwnerName, setNewOwnerName] = useState('');
   const [newOwnerEmail, setNewOwnerEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -144,8 +154,17 @@ export default function SaasClientsPage() {
   const [newCycleDays, setNewCycleDays] = useState('30');
   const [newPaymentNotes, setNewPaymentNotes] = useState('');
 
-  // Edit / Action Dialogs
+  // Edit Client & Password Form
   const [activeClient, setActiveClient] = useState<ClientAccount | null>(null);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editCompany, setEditCompany] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editOwnerName, setEditOwnerName] = useState('');
+  const [editOwnerEmail, setEditOwnerEmail] = useState('');
+  const [editPassword, setEditPassword] = useState('');
+  const [showEditPassword, setShowEditPassword] = useState(false);
+
+  // Change Plan & Notes Dialogs
   const [isChangePlanOpen, setIsChangePlanOpen] = useState(false);
   const [targetPlan, setTargetPlan] = useState<'basic' | 'standard' | 'pro'>('basic');
   const [actionLoading, setActionLoading] = useState(false);
@@ -160,7 +179,7 @@ export default function SaasClientsPage() {
       const res = await fetch('/api/admin/clients');
       if (!res.ok) {
         if (res.status === 403) {
-          toast.error('Acceso denegado: se requieren permisos de Super Admin.');
+          toast.error('Acceso denegado: se requieren permisos de Super Admin o Soporte.');
         } else {
           toast.error('Error al cargar la lista de clientes.');
         }
@@ -196,6 +215,7 @@ export default function SaasClientsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           companyName: newCompany,
+          phone: newPhone,
           ownerName: newOwnerName,
           ownerEmail: newOwnerEmail,
           password: newPassword,
@@ -214,6 +234,7 @@ export default function SaasClientsPage() {
       setIsCreateOpen(false);
       // Reset form
       setNewCompany('');
+      setNewPhone('');
       setNewOwnerName('');
       setNewOwnerEmail('');
       setNewPassword('');
@@ -224,6 +245,55 @@ export default function SaasClientsPage() {
       toast.error(err.message || 'Error al crear cliente');
     } finally {
       setCreateLoading(false);
+    }
+  };
+
+  // Handle Client Edit (Company, Phone, Name, Email, Password)
+  const handleOpenEdit = (client: ClientAccount) => {
+    setActiveClient(client);
+    setEditCompany(client.name);
+    setEditPhone(client.phone || '');
+    setEditOwnerName(client.owner_name);
+    setEditOwnerEmail(client.owner_email);
+    setEditPassword('');
+    setIsEditOpen(true);
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeClient) return;
+
+    try {
+      setActionLoading(true);
+      const updates: Record<string, any> = {
+        name: editCompany.trim(),
+        phone: editPhone.trim() || null,
+        owner_name: editOwnerName.trim(),
+        owner_email: editOwnerEmail.trim().toLowerCase(),
+      };
+
+      if (editPassword.trim()) {
+        updates.new_password = editPassword.trim();
+      }
+
+      const res = await fetch(`/api/admin/clients/${activeClient.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al actualizar');
+      }
+
+      toast.success(`Datos de "${editCompany}" actualizados correctamente.`);
+      setIsEditOpen(false);
+      fetchClients();
+    } catch (err: any) {
+      toast.error(err.message || 'Error al guardar cambios');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -273,12 +343,12 @@ export default function SaasClientsPage() {
     );
   };
 
-  // Add 500 Messages Add-on
-  const handleAddMessages = (client: ClientAccount) => {
+  // Add 100 Conversations Add-on
+  const handleAddConversations = (client: ClientAccount) => {
     patchClient(
       client.id,
-      { add_extra_messages: 500 },
-      `+500 mensajes añadidos a "${client.name}".`
+      { add_extra_messages: 100 },
+      `+100 conversaciones de 24h añadidas a "${client.name}".`
     );
   };
 
@@ -321,6 +391,7 @@ export default function SaasClientsPage() {
       const matchSearch =
         c.name.toLowerCase().includes(search.toLowerCase()) ||
         c.owner_email.toLowerCase().includes(search.toLowerCase()) ||
+        (c.phone && c.phone.includes(search)) ||
         c.owner_name.toLowerCase().includes(search.toLowerCase());
 
       const matchPlan = planFilter === 'all' || c.plan_tier === planFilter;
@@ -352,11 +423,11 @@ export default function SaasClientsPage() {
               Panel de Clientes SaaS
             </h1>
             <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-400">
-              Super Admin
+              {profile?.role === 'support' ? 'Soporte / Operaciones' : 'Super Admin'}
             </span>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Administra las empresas clientes de tu plataforma, planes, vencimientos y consumos de IA en tiempo real.
+            Límites por conversaciones de 24 horas (Modelo Meta), planes comerciales, vencimientos y soporte a empresas.
           </p>
         </div>
 
@@ -425,16 +496,16 @@ export default function SaasClientsPage() {
         <Card className="border-border bg-card">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Mensajes Globales Mes
+              Ventana de Sesión
             </CardTitle>
-            <MessageSquare className="h-4 w-4 text-blue-400" />
+            <Clock className="h-4 w-4 text-blue-400" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-foreground">
-              {(metrics?.total_messages_month || 0).toLocaleString()}
+              24 Horas
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Procesados en todas las empresas
+              Interacciones ilimitadas por sesión
             </p>
           </CardContent>
         </Card>
@@ -465,7 +536,7 @@ export default function SaasClientsPage() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por empresa, dueño o correo electrónico..."
+            placeholder="Buscar por empresa, teléfono, dueño o correo..."
             className="pl-9"
           />
         </div>
@@ -477,9 +548,9 @@ export default function SaasClientsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos los Planes</SelectItem>
-              <SelectItem value="basic">Emprendedor ($25)</SelectItem>
-              <SelectItem value="standard">Comercio ($45)</SelectItem>
-              <SelectItem value="pro">Empresa ($85)</SelectItem>
+              <SelectItem value="basic">Emprendedor (50 conv/d)</SelectItem>
+              <SelectItem value="standard">Comercio (150 conv/d)</SelectItem>
+              <SelectItem value="pro">Empresa (400 conv/d)</SelectItem>
             </SelectContent>
           </Select>
 
@@ -503,11 +574,11 @@ export default function SaasClientsPage() {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-border bg-muted/40 text-xs font-medium text-muted-foreground uppercase tracking-wider">
               <tr>
-                <th className="px-4 py-3">Empresa / Dueño</th>
-                <th className="px-4 py-3">Plan</th>
+                <th className="px-4 py-3">Empresa / Contacto</th>
+                <th className="px-4 py-3">Plan (Meta 24h)</th>
                 <th className="px-4 py-3">Estado</th>
                 <th className="px-4 py-3">Vencimiento del Ciclo</th>
-                <th className="px-4 py-3">Consumo Mensual</th>
+                <th className="px-4 py-3">Conversaciones de Hoy (24h)</th>
                 <th className="px-4 py-3 text-right">Acciones</th>
               </tr>
             </thead>
@@ -535,14 +606,9 @@ export default function SaasClientsPage() {
                   const isExpired = daysLeft <= 0;
                   const isExpiringSoon = daysLeft > 0 && daysLeft <= 5;
 
-                  const msgPct = Math.min(
-                    100,
-                    Math.round((client.messages_count / client.monthly_message_limit) * 100)
-                  );
-                  const audioPct = Math.min(
-                    100,
-                    Math.round((client.audios_count / client.monthly_audio_limit) * 100)
-                  );
+                  const dailyLimit = client.daily_conversation_limit || plan.dailyConv;
+                  const dailyCount = client.daily_conversations_count || 0;
+                  const convPct = Math.min(100, Math.round((dailyCount / dailyLimit) * 100));
 
                   return (
                     <tr
@@ -553,6 +619,11 @@ export default function SaasClientsPage() {
                       <td className="px-4 py-3.5">
                         <div className="font-semibold text-foreground flex items-center gap-1.5">
                           {client.name}
+                          {client.phone && (
+                            <span className="text-xs font-normal text-emerald-400 flex items-center gap-0.5">
+                              • <Phone className="h-3 w-3 inline" /> {client.phone}
+                            </span>
+                          )}
                           {client.payment_notes && (
                             <span
                               title={`Notas: ${client.payment_notes}`}
@@ -576,6 +647,9 @@ export default function SaasClientsPage() {
                         >
                           {plan.name} (${plan.price}/m)
                         </span>
+                        <div className="text-[11px] text-muted-foreground mt-0.5">
+                          Límite: {dailyLimit} conv/día
+                        </div>
                       </td>
 
                       {/* Estado */}
@@ -613,43 +687,38 @@ export default function SaasClientsPage() {
                         </div>
                       </td>
 
-                      {/* Consumo */}
-                      <td className="px-4 py-3.5 min-w-[200px]">
-                        {/* Mensajes */}
+                      {/* Conversaciones de Hoy (Meta 24h) */}
+                      <td className="px-4 py-3.5 min-w-[210px]">
                         <div className="space-y-1">
                           <div className="flex justify-between text-xs text-muted-foreground">
                             <span>
-                              💬 {client.messages_count.toLocaleString()} /{' '}
-                              {client.monthly_message_limit.toLocaleString()} msgs
+                              💬 {dailyCount} / {dailyLimit} conv/día
                             </span>
                             {client.extra_messages_balance > 0 && (
                               <span className="text-emerald-400 font-medium">
-                                +{client.extra_messages_balance} extra
+                                +{client.extra_messages_balance} saldo
                               </span>
                             )}
                           </div>
                           <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
                             <div
                               className={`h-full rounded-full ${
-                                msgPct > 90
+                                convPct > 90
                                   ? 'bg-red-500'
-                                  : msgPct > 70
+                                  : convPct > 70
                                   ? 'bg-amber-500'
-                                  : 'bg-primary'
+                                  : 'bg-emerald-500'
                               }`}
-                              style={{ width: `${msgPct}%` }}
+                              style={{ width: `${convPct}%` }}
                             />
                           </div>
                         </div>
 
-                        {/* Audios & OCR */}
-                        <div className="mt-1.5 flex gap-3 text-[11px] text-muted-foreground">
-                          <span>
-                            🎙️ {client.audios_count}/{client.monthly_audio_limit} audios
-                          </span>
-                          <span>
-                            🧾 {client.ocr_count}/{client.monthly_ocr_limit} OCR
-                          </span>
+                        {/* Mes total y Audios/OCR */}
+                        <div className="mt-1.5 flex justify-between text-[11px] text-muted-foreground">
+                          <span>Mes: {client.monthly_conversations_count || 0} conv</span>
+                          <span>🎙️ {client.audios_count}/{client.monthly_audio_limit}</span>
+                          <span>🧾 {client.ocr_count}/{client.monthly_ocr_limit}</span>
                         </div>
                       </td>
 
@@ -662,7 +731,15 @@ export default function SaasClientsPage() {
                           >
                             <MoreVertical className="h-4 w-4" />
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-52">
+                          <DropdownMenuContent align="end" className="w-56">
+                            <DropdownMenuItem
+                              onClick={() => handleOpenEdit(client)}
+                              className="gap-2"
+                            >
+                              <Edit3 className="h-4 w-4 text-emerald-400" />
+                              Editar Datos y Contraseña
+                            </DropdownMenuItem>
+
                             <DropdownMenuItem
                               onClick={() => {
                                 setActiveClient(client);
@@ -672,15 +749,15 @@ export default function SaasClientsPage() {
                               className="gap-2"
                             >
                               <Zap className="h-4 w-4 text-purple-400" />
-                              Cambiar de Plan
+                              Cambiar Plan Comercial
                             </DropdownMenuItem>
 
                             <DropdownMenuItem
-                              onClick={() => handleAddMessages(client)}
+                              onClick={() => handleAddConversations(client)}
                               className="gap-2"
                             >
                               <Plus className="h-4 w-4 text-blue-400" />
-                              Recargar +500 Msgs ($5)
+                              Recargar +100 Conv ($5)
                             </DropdownMenuItem>
 
                             <DropdownMenuItem
@@ -708,7 +785,7 @@ export default function SaasClientsPage() {
                               className="gap-2"
                             >
                               <FileSearch className="h-4 w-4 text-amber-400" />
-                              Notas de Cobro/Pago
+                              Notas de Cobro / Referencia
                             </DropdownMenuItem>
 
                             <DropdownMenuSeparator />
@@ -754,7 +831,7 @@ export default function SaasClientsPage() {
               Dar de Alta Nuevo Cliente SaaS
             </DialogTitle>
             <DialogDescription>
-              Crea la cuenta de la empresa y los accesos para el dueño del negocio.
+              Crea la empresa, número de contacto y accesos para el dueño del negocio.
             </DialogDescription>
           </DialogHeader>
 
@@ -774,6 +851,16 @@ export default function SaasClientsPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
+                <Label htmlFor="phone">Número de Teléfono / WhatsApp</Label>
+                <Input
+                  id="phone"
+                  value={newPhone}
+                  onChange={(e) => setNewPhone(e.target.value)}
+                  placeholder="Ej: +58 412 1234567"
+                />
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="owner-name">Nombre del Contacto</Label>
                 <Input
                   id="owner-name"
@@ -782,7 +869,9 @@ export default function SaasClientsPage() {
                   placeholder="Ej: Carlos Gómez"
                 />
               </div>
+            </div>
 
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="owner-email">
                   Correo Electrónico <span className="text-red-400">*</span>
@@ -796,28 +885,28 @@ export default function SaasClientsPage() {
                   required
                 />
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="initial-password">
-                Contraseña Inicial de Acceso <span className="text-red-400">*</span>
-              </Label>
-              <div className="relative">
-                <Input
-                  id="initial-password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Mínimo 6 caracteres"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+              <div className="space-y-2">
+                <Label htmlFor="initial-password">
+                  Contraseña Inicial <span className="text-red-400">*</span>
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="initial-password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Mínimo 6 caracteres"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -826,20 +915,20 @@ export default function SaasClientsPage() {
                 <Label>Plan a Asignar</Label>
                 <Select
                   value={newPlanTier}
-                  onValueChange={(v) => setNewPlanTier(v as any)}
+                  onValueChange={(v) => v && setNewPlanTier(v as any)}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="basic">
-                      Plan Emprendedor ($25 / mes)
+                      Plan Emprendedor (50 conv/día - $25/m)
                     </SelectItem>
                     <SelectItem value="standard">
-                      Plan Comercio ($45 / mes)
+                      Plan Comercio (150 conv/día - $45/m)
                     </SelectItem>
                     <SelectItem value="pro">
-                      Plan Empresa Pro ($85 / mes)
+                      Plan Empresa Pro (400 conv/día - $85/m)
                     </SelectItem>
                   </SelectContent>
                 </Select>
@@ -893,13 +982,117 @@ export default function SaasClientsPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Modal: Editar Datos de Empresa & Contraseña */}
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit3 className="h-5 w-5 text-emerald-400" />
+              Editar Empresa & Contraseña de Acceso
+            </DialogTitle>
+            <DialogDescription>
+              Modifica los datos comerciales del cliente o restablece su contraseña si la olvidó.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSaveEdit} className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="edit-company-name">Nombre de la Empresa</Label>
+              <Input
+                id="edit-company-name"
+                value={editCompany}
+                onChange={(e) => setEditCompany(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-phone">Teléfono / WhatsApp</Label>
+                <Input
+                  id="edit-phone"
+                  value={editPhone}
+                  onChange={(e) => setEditPhone(e.target.value)}
+                  placeholder="Ej: +58 412 1234567"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-owner-name">Nombre del Contacto</Label>
+                <Input
+                  id="edit-owner-name"
+                  value={editOwnerName}
+                  onChange={(e) => setEditOwnerName(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-owner-email">Correo Electrónico</Label>
+              <Input
+                id="edit-owner-email"
+                type="email"
+                value={editOwnerEmail}
+                onChange={(e) => setEditOwnerEmail(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="rounded-lg border border-border/80 bg-muted/20 p-3.5 space-y-2">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                <Lock className="h-3.5 w-3.5 text-amber-400" />
+                Restablecer Contraseña del Cliente (Opcional)
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Deja este campo vacío si el cliente no desea cambiar su contraseña. Si el cliente la olvidó, escribe una nueva clave aquí.
+              </p>
+              <div className="relative">
+                <Input
+                  id="edit-password"
+                  type={showEditPassword ? 'text' : 'password'}
+                  value={editPassword}
+                  onChange={(e) => setEditPassword(e.target.value)}
+                  placeholder="Escribir nueva contraseña (mínimo 6 caracteres)"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowEditPassword(!showEditPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showEditPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+
+            <DialogFooter className="mt-6">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsEditOpen(false)}
+                disabled={actionLoading}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={actionLoading}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Guardar Cambios
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       {/* Modal: Cambiar Plan */}
       <Dialog open={isChangePlanOpen} onOpenChange={setIsChangePlanOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Cambiar Plan de {activeClient?.name}</DialogTitle>
             <DialogDescription>
-              Al cambiar el plan se sincronizarán automáticamente los nuevos límites de mensajes, audios, OCR y agentes permitidos.
+              Al cambiar el plan se sincronizarán automáticamente las conversaciones de 24h al día, audios, OCR y agentes permitidos.
             </DialogDescription>
           </DialogHeader>
 
@@ -908,20 +1101,20 @@ export default function SaasClientsPage() {
               <Label>Seleccionar Nuevo Plan</Label>
               <Select
                 value={targetPlan}
-                onValueChange={(v) => setTargetPlan(v as any)}
+                onValueChange={(v) => v && setTargetPlan(v as any)}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="basic">
-                    Plan Emprendedor ($25/m) • 1.500 msgs • 200 audios • 1 agente
+                    Plan Emprendedor ($25/m) • 50 conv/día • 200 audios • 1 agente
                   </SelectItem>
                   <SelectItem value="standard">
-                    Plan Comercio ($45/m) • 4.500 msgs • 800 audios • 3 agentes
+                    Plan Comercio ($45/m) • 150 conv/día • 800 audios • 3 agentes
                   </SelectItem>
                   <SelectItem value="pro">
-                    Plan Empresa ($85/m) • 12.000 msgs • 2.500 audios • 10 agentes
+                    Plan Empresa ($85/m) • 400 conv/día • 2.500 audios • 10 agentes
                   </SelectItem>
                 </SelectContent>
               </Select>

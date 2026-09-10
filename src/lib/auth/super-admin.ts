@@ -8,7 +8,11 @@ export const SUPER_ADMIN_EMAILS = [
     : []),
 ];
 
-export async function requireSuperAdmin() {
+/**
+ * Validates caller is either Super Admin or Support Staff.
+ * Support users handle sales, onboardings, and day-to-day operations.
+ */
+export async function requireSaasAdmin() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -25,15 +29,27 @@ export async function requireSuperAdmin() {
     .eq("user_id", user.id)
     .maybeSingle();
 
-  const isSuper =
+  const isAuthorized =
     profile?.role === "superadmin" ||
+    profile?.role === "support" ||
     (user.email && SUPER_ADMIN_EMAILS.includes(user.email.toLowerCase()));
 
-  if (!isSuper) {
-    throw new ForbiddenError("Superadmin privileges required");
+  if (!isAuthorized) {
+    throw new ForbiddenError("Se requieren permisos de Superadmin o Soporte.");
   }
 
   return { user, profile };
+}
+
+export const requireSuperAdmin = requireSaasAdmin;
+
+export function canAccessSaasClients(
+  profile?: { role?: string | null } | null,
+  email?: string | null
+): boolean {
+  if (profile?.role === "superadmin" || profile?.role === "support") return true;
+  if (email && SUPER_ADMIN_EMAILS.includes(email.toLowerCase())) return true;
+  return false;
 }
 
 export function isSuperAdminEmail(email?: string | null): boolean {

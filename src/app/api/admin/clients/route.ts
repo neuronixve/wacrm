@@ -19,7 +19,12 @@ export async function GET() {
         is_active,
         payment_status,
         payment_notes,
+        phone,
         max_agents,
+        daily_conversation_limit,
+        daily_conversations_count,
+        monthly_conversations_count,
+        monthly_conversation_limit,
         monthly_message_limit,
         monthly_audio_limit,
         monthly_ocr_limit,
@@ -116,6 +121,7 @@ export async function POST(request: Request) {
       companyName,
       ownerName,
       ownerEmail,
+      phone,
       password,
       planTier = 'basic',
       cycleDays = 30,
@@ -140,6 +146,7 @@ export async function POST(request: Request) {
       email_confirm: true,
       user_metadata: {
         full_name: ownerName?.trim() || companyName.trim(),
+        phone: phone?.trim() || '',
       },
     });
 
@@ -178,6 +185,7 @@ export async function POST(request: Request) {
         .from('accounts')
         .update({
           name: companyName.trim(),
+          phone: phone?.trim() || null,
           plan_tier: planTier,
           cycle_reset_at: resetDate.toISOString(),
           is_active: true,
@@ -197,6 +205,7 @@ export async function POST(request: Request) {
         .from('accounts')
         .insert({
           name: companyName.trim(),
+          phone: phone?.trim() || null,
           owner_user_id: newUserId,
           plan_tier: planTier,
           cycle_reset_at: resetDate.toISOString(),

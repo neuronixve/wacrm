@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireSuperAdmin } from '@/lib/auth/super-admin';
+import { requireSaasAdmin } from '@/lib/auth/super-admin';
 import { supabaseAdmin } from '@/lib/ai/admin-client';
 import { toErrorResponse } from '@/lib/auth/account';
 
@@ -8,7 +8,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireSuperAdmin();
+    await requireSaasAdmin();
     const { id } = await params;
     const admin = supabaseAdmin();
 
@@ -19,6 +19,10 @@ export async function PATCH(
 
     const {
       name,
+      phone,
+      owner_name,
+      owner_email,
+      new_password,
       plan_tier,
       is_active,
       payment_status,
@@ -33,6 +37,10 @@ export async function PATCH(
 
     if (typeof name === 'string' && name.trim()) {
       updates.name = name.trim();
+    }
+
+    if (phone !== undefined) {
+      updates.phone = phone ? phone.trim() : null;
     }
 
     if (['basic', 'standard', 'pro'].includes(plan_tier)) {
@@ -55,10 +63,11 @@ export async function PATCH(
       updates.messages_count = 0;
       updates.audios_count = 0;
       updates.ocr_count = 0;
+      updates.daily_conversations_count = 0;
+      updates.monthly_conversations_count = 0;
     }
 
     if (typeof add_extra_messages === 'number' && add_extra_messages !== 0) {
-      // Fetch current balance
       const { data: currentAcc } = await admin
         .from('accounts')
         .select('extra_messages_balance')
@@ -77,7 +86,6 @@ export async function PATCH(
         .single();
 
       const baseDate = currentAcc?.cycle_reset_at ? new Date(currentAcc.cycle_reset_at) : new Date();
-      // If cycle was already in the past, extend from now
       const start = baseDate.getTime() < Date.now() ? new Date() : baseDate;
       start.setDate(start.getDate() + extend_days);
       updates.cycle_reset_at = start.toISOString();
@@ -86,23 +94,65 @@ export async function PATCH(
       updates.cycle_reset_at = new Date(new_cycle_date).toISOString();
     }
 
-    if (Object.keys(updates).length === 0) {
-      return NextResponse.json({ error: 'No hay cambios para actualizar' }, { status: 400 });
+    // Handle Password Reset if requested
+    if (typeof new_password === 'string' && new_password.trim()) {
+      if (new_password.trim().length < 6) {
+        return NextResponse.json({ error: 'La nueva contraseña debe tener al menos 6 caracteres' }, { status: 400 });
+      }
+      const { data: acc } = await admin.from('accounts').select('owner_user_id').eq('id', id).single();
+      if (acc?.owner_user_id) {
+        const { error: pwdErr } = await admin.auth.admin.updateUserById(acc.owner_user_id, {
+          password: new_password.trim(),
+        });
+        if (pwdErr) {
+          console.error('[PATCH /api/admin/clients/[id]] password update error:', pwdErr);
+          return NextResponse.json({ error: pwdErr.message || 'Error al restablecer contraseña' }, { status: 400 });
+        }
+      }
     }
 
-    const { data: updated, error } = await admin
-      .from('accounts')
-      .update(updates)
-      .eq('id', id)
-      .select('*')
-      .single();
+    // Handle Owner Name / Email updates if requested
+    if (typeof owner_name === 'string' || typeof owner_email === 'string') {
+      const { data: acc } = await admin.from('accounts').select('owner_user_id').eq('id', id).single();
+      if (acc?.owner_user_id) {
+        const userUpdates: Record<string, any> = {};
+        const profileUpdates: Record<string, any> = {};
 
-    if (error) {
-      console.error('[PATCH /api/admin/clients/[id]] update error:', error);
-      return NextResponse.json({ error: 'Error al actualizar el cliente' }, { status: 500 });
+        if (owner_email && owner_email.trim()) {
+          userUpdates.email = owner_email.trim().toLowerCase();
+          profileUpdates.email = owner_email.trim().toLowerCase();
+        }
+        if (owner_name && owner_name.trim()) {
+          userUpdates.user_metadata = { full_name: owner_name.trim() };
+          profileUpdates.full_name = owner_name.trim();
+        }
+
+        if (Object.keys(userUpdates).length > 0) {
+          await admin.auth.admin.updateUserById(acc.owner_user_id, userUpdates);
+        }
+        if (Object.keys(profileUpdates).length > 0) {
+          await admin.from('profiles').update(profileUpdates).eq('user_id', acc.owner_user_id);
+        }
+      }
     }
 
-    return NextResponse.json({ success: true, account: updated });
+    if (Object.keys(updates).length > 0) {
+      const { data: updated, error } = await admin
+        .from('accounts')
+        .update(updates)
+        .eq('id', id)
+        .select('*')
+        .single();
+
+      if (error) {
+        console.error('[PATCH /api/admin/clients/[id]] update error:', error);
+        return NextResponse.json({ error: 'Error al actualizar el cliente' }, { status: 500 });
+      }
+
+      return NextResponse.json({ success: true, account: updated });
+    }
+
+    return NextResponse.json({ success: true });
   } catch (err) {
     return toErrorResponse(err);
   }

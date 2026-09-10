@@ -133,8 +133,10 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     !!account?.name &&
     account.name !== profile?.full_name;
 
-  const isSuperAdmin =
-    profile?.role === "superadmin" || profile?.email === "sergiovj@gmail.com";
+  const canManageClients =
+    profile?.role === "superadmin" ||
+    profile?.role === "support" ||
+    profile?.email === "sergiovj@gmail.com";
 
   // Close the drawer when route changes — users opened it to navigate,
   // so once they pick a destination the drawer should get out of the way.
@@ -275,7 +277,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           <div className="my-4 border-t border-border" />
 
           <ul className="flex flex-col gap-1">
-            {isSuperAdmin && (
+            {canManageClients && (
               <li>
                 <Link
                   href="/saas-clients"

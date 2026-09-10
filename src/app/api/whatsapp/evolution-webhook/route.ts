@@ -278,33 +278,51 @@ export async function POST(request: Request) {
           return NextResponse.json({ received: true, messageId: insertedRows[0].id, skippedAi: 'audio_too_long' });
         }
 
-        // 2. SaaS Plan Quota Check & Increment
+        // 2. SaaS Meta 24-Hour Conversation Session Window & Quota Check
+        const { data: sessionData } = await supabaseAdmin().rpc('track_conversation_session', {
+          p_account_id: accountId,
+          p_conversation_id: conversationId,
+        });
+
+        if (sessionData && sessionData.allowed === false) {
+          if (sessionData.error === 'daily_limit_reached') {
+            console.warn(`[evolution-webhook] Account ${accountId} reached daily conversation limit`);
+            await sendEvolutionTextMessage(
+              instanceName,
+              sanitizedPhone,
+              'Hemos alcanzado el límite diario de conversaciones disponibles para nuestro servicio de atención. Por favor contáctanos nuevamente el día de mañana.'
+            );
+            return NextResponse.json({
+              received: true,
+              messageId: insertedRows[0].id,
+              skippedAi: 'daily_conversations_exceeded',
+            });
+          }
+        }
+
+        // Audios and OCR consumption tracking
         const { data: acct } = await supabaseAdmin()
           .from('accounts')
-          .select('messages_count, monthly_message_limit, extra_messages_balance, audios_count, monthly_audio_limit, ocr_count, monthly_ocr_limit')
+          .select('audios_count, monthly_audio_limit, ocr_count, monthly_ocr_limit')
           .eq('id', accountId)
           .single();
 
         let quotaExceeded = false;
         if (acct) {
-          const totalMessageLimit = (acct.monthly_message_limit || 1500) + (acct.extra_messages_balance || 0);
-          const isOverMessageLimit = (acct.messages_count || 0) >= totalMessageLimit;
           const isOverAudioLimit = contentType === 'audio' && (acct.audios_count || 0) >= (acct.monthly_audio_limit || 200);
           const isOverOcrLimit = contentType === 'image' && (acct.ocr_count || 0) >= (acct.monthly_ocr_limit || 50);
+          quotaExceeded = isOverAudioLimit || isOverOcrLimit;
 
-          quotaExceeded = isOverMessageLimit || isOverAudioLimit || isOverOcrLimit;
-
-          const updates: Record<string, number> = {
-            messages_count: (acct.messages_count || 0) + 1,
-          };
+          const updates: Record<string, number> = {};
           if (contentType === 'audio') {
             updates.audios_count = (acct.audios_count || 0) + 1;
           }
           if (contentType === 'image') {
             updates.ocr_count = (acct.ocr_count || 0) + 1;
           }
-
-          await supabaseAdmin().from('accounts').update(updates).eq('id', accountId);
+          if (Object.keys(updates).length > 0) {
+            await supabaseAdmin().from('accounts').update(updates).eq('id', accountId);
+          }
         }
 
         // 3. Dispatch AI Auto-Reply if within quota

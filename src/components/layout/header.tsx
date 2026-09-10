@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ModeToggle } from "@/components/layout/mode-toggle";
+import { LanguageSwitcher } from "@/components/layout/language-switcher";
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "dashboard",
@@ -26,6 +27,7 @@ const pageTitles: Record<string, string> = {
   "/pipelines": "pipelines",
   "/broadcasts": "broadcasts",
   "/automations": "automations",
+  "/saas-clients": "saasClients",
   "/settings": "settings",
 };
 
@@ -74,6 +76,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-1 sm:gap-2">
+        <LanguageSwitcher />
         <ModeToggle />
 
         <DropdownMenu>
