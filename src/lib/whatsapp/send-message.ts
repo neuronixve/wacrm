@@ -363,19 +363,20 @@ export async function sendMessageToConversation(
   const attempt = async (phone: string): Promise<string> => {
     if (isEvolution) {
       const instanceName = config.instance_name!;
+      const recipient = (contact as any)?.whatsapp_jid || phone;
       if (messageType === 'template') {
         const textBody =
           templateContentText(
             templateRow,
             templateBodyParams(templateParams, templateMessageParams)
           ) || contentText || templateName || '';
-        const result = await sendEvolutionTextMessage(instanceName, phone, textBody);
+        const result = await sendEvolutionTextMessage(instanceName, recipient, textBody);
         return result.key?.id || `evo_${Date.now()}`;
       }
       if (isMediaKind) {
         const result = await sendEvolutionMediaMessage(
           instanceName,
-          phone,
+          recipient,
           mediaUrl!,
           contentText || undefined,
           messageType as any,
@@ -391,10 +392,10 @@ export async function sendMessageToConversation(
         if (p.kind === 'buttons' && p.buttons?.length) {
           textToSend += '\n' + p.buttons.map((b, idx) => `[${idx + 1}] ${b.title}`).join('\n');
         }
-        const result = await sendEvolutionTextMessage(instanceName, phone, textToSend);
+        const result = await sendEvolutionTextMessage(instanceName, recipient, textToSend);
         return result.key?.id || `evo_${Date.now()}`;
       }
-      const result = await sendEvolutionTextMessage(instanceName, phone, contentText!);
+      const result = await sendEvolutionTextMessage(instanceName, recipient, contentText!);
       return result.key?.id || `evo_${Date.now()}`;
     }
 

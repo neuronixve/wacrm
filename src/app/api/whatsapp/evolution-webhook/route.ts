@@ -167,16 +167,24 @@ export async function POST(request: Request) {
       const ownerUserId = config.user_id;
 
       // Find or create contact
+      // Look up contact by whatsapp_jid (e.g. 51874816344264@lid) OR phone
       let contactId: string;
       const { data: existingContact } = await supabaseAdmin()
         .from('contacts')
-        .select('id')
+        .select('id, phone, whatsapp_jid')
         .eq('account_id', accountId)
-        .eq('phone', sanitizedPhone)
+        .or(`whatsapp_jid.eq.${remoteJid},phone.eq.${sanitizedPhone}`)
         .maybeSingle();
 
       if (existingContact) {
         contactId = existingContact.id;
+        // Keep whatsapp_jid up-to-date so subsequent edits to phone never break routing
+        if (!existingContact.whatsapp_jid && remoteJid) {
+          await supabaseAdmin()
+            .from('contacts')
+            .update({ whatsapp_jid: remoteJid })
+            .eq('id', contactId);
+        }
       } else {
         const { data: newContact, error: createContactErr } = await supabaseAdmin()
           .from('contacts')
@@ -185,6 +193,7 @@ export async function POST(request: Request) {
             user_id: ownerUserId,
             name: senderName,
             phone: sanitizedPhone,
+            whatsapp_jid: remoteJid,
           })
           .select('id')
           .single();
