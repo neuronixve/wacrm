@@ -19,9 +19,10 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const event = body.event || body.type;
-    const instanceName = body.instance;
-    const data = body.data;
+    const rawEvent = body?.event || body?.type || '';
+    const event = String(rawEvent).toLowerCase().replace(/_/g, '.');
+    const instanceName = body?.instance;
+    const data = body?.data;
 
     if (!instanceName) {
       return NextResponse.json({ received: true, ignored: 'missing instance' });
@@ -85,10 +86,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ received: true, handled: 'qrcode.updated' });
     }
 
-    // 3. Inbound message (messages.upsert)
-    if (event === 'messages.upsert') {
-      const msg = data?.message;
-      const key = data?.key;
+    // 3. Inbound message (messages.upsert or send.message)
+    if (event === 'messages.upsert' || event === 'send.message') {
+      const messageItem = Array.isArray(data) ? data[0] : (data?.messages?.[0] || data);
+      const msg = messageItem?.message;
+      const key = messageItem?.key;
       const remoteJid = key?.remoteJid || '';
 
       // Skip status broadcast and groups for now
@@ -109,7 +111,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ received: true, ignored: 'invalid phone' });
       }
 
-      const senderName = data?.pushName || sanitizedPhone;
+      const senderName = messageItem?.pushName || sanitizedPhone;
 
       // Extract content and type
       let contentType = 'text';
@@ -226,8 +228,9 @@ export async function POST(request: Request) {
       }
 
       // Insert message idempotently
-      const timestamp = data?.messageTimestamp
-        ? new Date(Number(data.messageTimestamp) * 1000).toISOString()
+      const rawTimestamp = messageItem?.messageTimestamp || data?.messageTimestamp;
+      const timestamp = rawTimestamp
+        ? new Date(Number(rawTimestamp) * 1000).toISOString()
         : new Date().toISOString();
 
       const senderType = isFromMe ? 'agent' : 'customer';
