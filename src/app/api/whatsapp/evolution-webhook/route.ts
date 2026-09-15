@@ -238,9 +238,21 @@ export async function POST(request: Request) {
 
       // Insert message idempotently
       const rawTimestamp = messageItem?.messageTimestamp || data?.messageTimestamp;
-      const timestamp = rawTimestamp
-        ? new Date(Number(rawTimestamp) * 1000).toISOString()
-        : new Date().toISOString();
+      let timestamp = new Date().toISOString();
+      if (rawTimestamp) {
+        const num =
+          typeof rawTimestamp === 'object' && 'low' in rawTimestamp
+            ? Number(rawTimestamp.low)
+            : Number(rawTimestamp);
+        if (!isNaN(num) && num > 0) {
+          const ms = num > 1e11 ? num : num * 1000;
+          try {
+            timestamp = new Date(ms).toISOString();
+          } catch {
+            timestamp = new Date().toISOString();
+          }
+        }
+      }
 
       const senderType = isFromMe ? 'agent' : 'customer';
 

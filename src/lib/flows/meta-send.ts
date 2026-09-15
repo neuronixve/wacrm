@@ -70,16 +70,16 @@ export async function engineSendText(
 
   const { data: contact, error: contactErr } = await db
     .from('contacts')
-    .select('id, phone')
+    .select('id, phone, whatsapp_jid')
     .eq('id', args.contactId)
     .eq('account_id', args.accountId)
     .maybeSingle()
-  if (contactErr || !contact?.phone) {
+  if (contactErr || (!contact?.phone && !contact?.whatsapp_jid)) {
     throw new Error('contact not found for this account')
   }
 
-  const sanitized = sanitizePhoneForMeta(contact.phone)
-  if (!isValidE164(sanitized)) {
+  const sanitized = contact?.phone ? sanitizePhoneForMeta(contact.phone) : ''
+  if (contact?.phone && !isValidE164(sanitized) && !contact?.whatsapp_jid) {
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
 
@@ -95,23 +95,32 @@ export async function engineSendText(
   const isEvolution = config.provider === 'evolution'
   const instanceName = config.instance_name || `account_${args.accountId}`
 
-  const attempt = async (phone: string): Promise<string> => {
+  const attempt = async (target: string): Promise<string> => {
     if (isEvolution) {
-      const evoRes = await sendEvolutionTextMessage(instanceName, phone, args.text)
+      const evoRes = await sendEvolutionTextMessage(instanceName, target, args.text)
       return evoRes.key?.id || `evo_${Date.now()}`
     }
     const accessToken = decrypt(config.access_token)
     const r = await sendTextMessage({
       phoneNumberId: config.phone_number_id,
       accessToken,
-      to: phone,
+      to: target,
       text: args.text,
     })
     return r.messageId
   }
 
-  const variants = phoneVariants(sanitized)
-  let workingPhone = sanitized
+  const variants: string[] = []
+  if (isEvolution && contact.whatsapp_jid) {
+    variants.push(contact.whatsapp_jid)
+  }
+  if (sanitized) {
+    for (const v of phoneVariants(sanitized)) {
+      if (!variants.includes(v)) variants.push(v)
+    }
+  }
+
+  let workingPhone = variants[0] || sanitized
   let waMessageId = ''
   let lastError: unknown = null
   for (const v of variants) {
@@ -121,14 +130,18 @@ export async function engineSendText(
       lastError = null
       break
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      if (!isRecipientNotAllowedError(msg)) throw err
       lastError = err
+      console.warn(`[engineSendText] send attempt to ${v} failed:`, err)
+      const msg = err instanceof Error ? err.message : String(err)
+      // Allow trying other variants if recipient not allowed or doesn't exist on whatsapp
+      if (!isRecipientNotAllowedError(msg) && !msg.includes('"exists":false') && !msg.includes('not exist')) {
+        throw err
+      }
     }
   }
   if (lastError) throw lastError
 
-  if (workingPhone !== sanitized) {
+  if (workingPhone !== sanitized && !workingPhone.includes('@')) {
     await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
   }
 
