@@ -79,7 +79,7 @@ export function AiConfig() {
   const [systemPrompt, setSystemPrompt] = useState('');
   const [isActive, setIsActive] = useState(false);
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
-  const [maxPerConversation, setMaxPerConversation] = useState(3);
+  const [maxPerConversation, setMaxPerConversation] = useState(20);
   // Empty string = leave unassigned (shared queue).
   const [handoffAgentId, setHandoffAgentId] = useState('');
   const [members, setMembers] = useState<AccountMember[]>([]);
@@ -115,7 +115,7 @@ export function AiConfig() {
         setSystemPrompt(data.system_prompt ?? '');
         setIsActive(data.is_active);
         setAutoReplyEnabled(data.auto_reply_enabled);
-        setMaxPerConversation(data.auto_reply_max_per_conversation ?? 3);
+        setMaxPerConversation(data.auto_reply_max_per_conversation ?? 20);
         setHandoffAgentId(data.handoff_agent_id ?? '');
         setHasStoredKey(Boolean(data.has_key));
         setApiKey(data.has_key ? MASKED_KEY : '');

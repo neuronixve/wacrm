@@ -292,7 +292,7 @@
     },
     "aiBanner": {
       "pausedTitle": "El asistente de IA está pausado aquí",
-      "activeText": "El asistente de IA está respondiendo automáticamente",
+      "activeText": "Asistente de IA activo para esta conversación",
       "takeOver": "Tomar control",
       "resume": "Reanudar IA",
       "tookOver": "Has tomado el control de esta conversación.",

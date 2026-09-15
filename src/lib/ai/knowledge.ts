@@ -101,6 +101,20 @@ export async function retrieveKnowledge(
       .select('id', { count: 'exact', head: true })
       .eq('account_id', accountId)
     if (error || !count) return []
+
+    // If the account has a compact knowledge base (10 chunks or fewer, like FAQs / payment details),
+    // inject all of them directly into context. This guarantees 100% recall for short confirmation
+    // queries like "Si mándamelos" or "dale" where fuzzy search wouldn't match keywords.
+    if (count <= 10) {
+      const { data: allChunks } = await db
+        .from('ai_knowledge_chunks')
+        .select('content')
+        .eq('account_id', accountId)
+        .order('chunk_index', { ascending: true })
+      if (allChunks && allChunks.length > 0) {
+        return allChunks.map((r: { content: string }) => r.content)
+      }
+    }
   } catch {
     return []
   }
