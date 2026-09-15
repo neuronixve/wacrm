@@ -278,8 +278,12 @@ export function MessageThread({
   // during render (React 19 refs rule); consumers only read `.current`
   // inside the async fetch completion, which runs after the render.
   const onMessagesLoadedRef = useRef(onMessagesLoaded);
+  const onNewMessageRef = useRef(onNewMessage);
+  const onUpdateMessageRef = useRef(onUpdateMessage);
   useEffect(() => {
     onMessagesLoadedRef.current = onMessagesLoaded;
+    onNewMessageRef.current = onNewMessage;
+    onUpdateMessageRef.current = onUpdateMessage;
   });
 
   const conversationId = conversation?.id;
@@ -298,10 +302,12 @@ export function MessageThread({
     [conversationId],
   );
 
-  // Fetch messages whenever the selected conversation changes. Kept
-  // separate from the unread-reset effect so that incoming messages
-  // arriving while the thread is open don't trigger a full refetch —
-  // they only flip hasUnread, which only the reset effect listens to.
+  const messagesCountRef = useRef(messages.length);
+  useEffect(() => {
+    messagesCountRef.current = messages.length;
+  }, [messages.length]);
+
+  // Fetch messages whenever the selected conversation changes or resyncToken bumps.
   useEffect(() => {
     if (!conversationId) return;
 
@@ -309,7 +315,9 @@ export function MessageThread({
     let cancelled = false;
 
     (async () => {
-      setLoading(true);
+      if (messagesCountRef.current === 0) {
+        setLoading(true);
+      }
 
       const { data, error } = await supabase
         .from("messages")
@@ -431,6 +439,36 @@ export function MessageThread({
           const old = payload.old as Partial<MessageReaction>;
           if (!old?.id) return;
           setReactions((prev) => prev.filter((r) => r.id !== old.id));
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          const row = payload.new as Message;
+          if (row) {
+            onNewMessageRef.current(row);
+          }
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "messages",
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          const row = payload.new as Message;
+          if (row?.id) {
+            onUpdateMessageRef.current(row.id, row);
+          }
         },
       )
       .subscribe();

@@ -395,6 +395,22 @@ function InboxPageInner() {
   }, []);
 
   /**
+   * Periodic background refresh safety net:
+   * Every 4 seconds, if the tab is visible, trigger a resync.
+   * This guarantees that new WhatsApp messages received via Evolution API or Meta
+   * appear in the active conversation thread and conversation list automatically,
+   * even if Supabase Realtime WebSocket drops or fails due to cross-table RLS policies.
+   */
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      setResyncToken((n) => n + 1);
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  /**
    * Manual refresh trigger for the thread-header refresh button.
    * Bumps the same resyncToken the reconnect / visibility paths use,
    * so it goes through the existing dedupe & refetch plumbing — no
