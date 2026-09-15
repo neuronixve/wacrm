@@ -151,6 +151,15 @@ export async function POST() {
       )
     }
 
+    if (config.provider === 'evolution') {
+      return NextResponse.json({
+        synced: 0,
+        inserted: 0,
+        updated: 0,
+        message: 'Evolution API gestiona las plantillas localmente de forma inmediata (sin revisión de Meta).',
+      })
+    }
+
     if (!config.waba_id) {
       return NextResponse.json(
         {

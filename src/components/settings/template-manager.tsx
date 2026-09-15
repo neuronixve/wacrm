@@ -12,6 +12,7 @@ import {
   Pencil,
   RotateCcw,
   Upload,
+  Zap,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -131,6 +132,7 @@ export function TemplateManager() {
 
   const [loading, setLoading] = useState(true);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+  const [whatsappProvider, setWhatsappProvider] = useState<'meta' | 'evolution' | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -190,13 +192,24 @@ export function TemplateManager() {
   async function fetchTemplates(userId: string) {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('message_templates')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      setTemplates(data || []);
+      const [templatesRes, configRes] = await Promise.all([
+        supabase
+          .from('message_templates')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('whatsapp_config')
+          .select('provider')
+          .maybeSingle(),
+      ]);
+
+      if (templatesRes.error) throw templatesRes.error;
+      setTemplates(templatesRes.data || []);
+
+      if (configRes.data?.provider) {
+        setWhatsappProvider(configRes.data.provider as 'meta' | 'evolution');
+      }
     } catch (err) {
       console.error('Failed to fetch templates:', err);
       toast.error(t('toastLoadFailed'));
@@ -530,9 +543,15 @@ export function TemplateManager() {
                       >
                         {template.category}
                       </Badge>
-                      <Badge className={`text-xs border ${status.classes}`}>
-                        {status.label}
-                      </Badge>
+                      {whatsappProvider === 'evolution' || template.meta_template_id?.startsWith('evo-') ? (
+                        <Badge className="text-xs border border-emerald-500/30 text-emerald-400 bg-emerald-500/10 flex items-center gap-1 font-medium">
+                          <Zap className="size-3" /> Activa (Local)
+                        </Badge>
+                      ) : (
+                        <Badge className={`text-xs border ${status.classes}`}>
+                          {status.label}
+                        </Badge>
+                      )}
                       {template.language && (
                         <span className="text-xs text-muted-foreground uppercase">
                           {template.language}
@@ -644,9 +663,11 @@ export function TemplateManager() {
               {editingId ? t('dialogEditTitle') : t('dialogNewTitle')}
             </DialogTitle>
             <DialogDescription className="text-muted-foreground">
-              {editingId
-                ? t('dialogEditDesc')
-                : t('dialogNewDesc')}
+              {whatsappProvider === 'evolution'
+                ? 'Crea una plantilla local para Evolution API. Se activará de inmediato sin requerir aprobación de Meta.'
+                : editingId
+                  ? t('dialogEditDesc')
+                  : t('dialogNewDesc')}
             </DialogDescription>
           </DialogHeader>
 
@@ -1071,6 +1092,8 @@ export function TemplateManager() {
                   <Loader2 className="size-4 animate-spin" />
                   {editingId ? t('saving') : t('submitting')}
                 </>
+              ) : whatsappProvider === 'evolution' ? (
+                editingId ? 'Guardar cambios' : 'Guardar plantilla'
               ) : editingId ? (
                 t('saveResubmit')
               ) : (
@@ -1094,7 +1117,9 @@ export function TemplateManager() {
           <DialogHeader>
             <DialogTitle className="text-popover-foreground">{t('deleteDialogTitle')}</DialogTitle>
             <DialogDescription className="text-muted-foreground">
-              {templateToDelete?.meta_template_id
+              {templateToDelete?.meta_template_id &&
+              !templateToDelete.meta_template_id.startsWith('evo-') &&
+              whatsappProvider !== 'evolution'
                 ? t('deleteMetaDesc', { name: templateToDelete.name })
                 : t('deleteLocalDesc', { name: templateToDelete?.name || '' })}
             </DialogDescription>

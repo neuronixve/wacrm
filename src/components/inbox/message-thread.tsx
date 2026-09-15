@@ -23,6 +23,7 @@ import {
   UserPlus,
   Check,
   Clock,
+  Zap,
   ArrowLeft,
   RefreshCw,
   PanelRightOpen,
@@ -105,6 +106,7 @@ interface MessageThreadProps {
    */
   contactPanelOpen?: boolean;
   onToggleContactPanel?: () => void;
+  whatsappProvider?: "meta" | "evolution" | null;
 }
 
 function formatDateSeparator(dateStr: string, t: ReturnType<typeof useTranslations>): string {
@@ -163,6 +165,7 @@ export function MessageThread({
   onRefresh,
   contactPanelOpen,
   onToggleContactPanel,
+  whatsappProvider,
 }: MessageThreadProps) {
   const t = useTranslations("Inbox.messageThread");
   const tTimer = useTranslations("Inbox.sessionTimer");
@@ -233,20 +236,29 @@ export function MessageThread({
 
   // 24-hour session timer
   const sessionInfo = useMemo(() => {
-    if (!messages.length) return { expired: false, remaining: "" };
+    const isEvolution = whatsappProvider === "evolution";
+    if (isEvolution) {
+      return {
+        expired: false,
+        remaining: "Evolution API (Sin límite 24h)",
+        isEvolution: true,
+      };
+    }
+
+    if (!messages.length) return { expired: false, remaining: "", isEvolution: false };
 
     // Find last customer message
     const lastCustomerMsg = [...messages]
       .reverse()
       .find((m) => m.sender_type === "customer");
 
-    if (!lastCustomerMsg) return { expired: true, remaining: "No customer messages" };
+    if (!lastCustomerMsg) return { expired: true, remaining: "No customer messages", isEvolution: false };
 
     const hoursSince = differenceInHours(new Date(), new Date(lastCustomerMsg.created_at));
     const expired = hoursSince >= 24;
 
     if (expired) {
-      return { expired: true, remaining: tTimer("expired") };
+      return { expired: true, remaining: tTimer("expired"), isEvolution: false };
     }
 
     const hoursLeft = 24 - hoursSince;
@@ -255,8 +267,8 @@ export function MessageThread({
         ? tTimer("xhRemaining", { hours: Math.floor(hoursLeft) })
         : tTimer("xmRemaining", { minutes: Math.floor(hoursLeft * 60) });
 
-    return { expired, remaining };
-  }, [messages, tTimer]);
+    return { expired, remaining, isEvolution: false };
+  }, [messages, tTimer, whatsappProvider]);
 
   // Store latest callback in a ref so fetchMessages doesn't need to
   // depend on `onMessagesLoaded` — otherwise parent re-renders cause
@@ -928,11 +940,19 @@ export function MessageThread({
           <Badge
             variant="outline"
             className={cn(
-              "ml-1 hidden gap-1 border-border text-[10px] sm:inline-flex sm:ml-2",
-              sessionInfo.expired ? "text-red-400" : "text-primary"
+              "ml-1 hidden gap-1 text-[10px] sm:inline-flex sm:ml-2",
+              sessionInfo.isEvolution
+                ? "border-emerald-500/30 text-emerald-400 bg-emerald-500/10 font-medium"
+                : sessionInfo.expired
+                ? "border-border text-red-400"
+                : "border-border text-primary"
             )}
           >
-            <Clock className="h-3 w-3" />
+            {sessionInfo.isEvolution ? (
+              <Zap className="h-3 w-3 text-emerald-400" />
+            ) : (
+              <Clock className="h-3 w-3" />
+            )}
             {sessionInfo.remaining}
           </Badge>
         </div>
@@ -1175,7 +1195,7 @@ export function MessageThread({
       {/* Composer */}
       <MessageComposer
         conversationId={conversation.id}
-        sessionExpired={sessionInfo.expired}
+        sessionExpired={sessionInfo.isEvolution ? false : sessionInfo.expired}
         onSend={handleSend}
         onSendMedia={handleSendMedia}
         onSendInteractive={handleSendInteractive}

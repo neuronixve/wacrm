@@ -137,12 +137,15 @@ export async function PATCH(
       )
     }
 
-    if (!isDryRun()) {
-      const { data: config, error: configError } = await supabase
-        .from('whatsapp_config')
-        .select('*')
-        .eq('account_id', accountId)
-        .single()
+    const { data: config, error: configError } = await supabase
+      .from('whatsapp_config')
+      .select('*')
+      .eq('account_id', accountId)
+      .maybeSingle()
+
+    const isEvolution = config?.provider === 'evolution'
+
+    if (!isDryRun() && !isEvolution) {
       if (configError || !config) {
         return NextResponse.json(
           { error: 'WhatsApp not configured.' },
@@ -182,6 +185,9 @@ export async function PATCH(
       }
     }
 
+    // Status: APPROVED for Evolution API, PENDING for Meta review
+    const targetStatus = isEvolution ? 'APPROVED' : 'PENDING'
+
     // Meta accepted the edit — status flips back to PENDING for review.
     const { data: row, error: updErr } = await supabase
       .from('message_templates')
@@ -195,7 +201,7 @@ export async function PATCH(
         footer_text: payload.footer_text ?? null,
         buttons: payload.buttons ?? null,
         sample_values: payload.sample_values ?? null,
-        status: 'PENDING',
+        status: targetStatus,
         submission_error: null,
         rejection_reason: null,
         last_submitted_at: new Date().toISOString(),
@@ -277,29 +283,35 @@ export async function DELETE(
       return NextResponse.json({ error: 'Template not found.' }, { status: 404 })
     }
 
-    if (existing.meta_template_id && !isDryRun()) {
+    const isEvolutionTemplate = existing.meta_template_id?.startsWith('evo-')
+
+    if (existing.meta_template_id && !isEvolutionTemplate && !isDryRun()) {
       const { data: config, error: configError } = await supabase
         .from('whatsapp_config')
         .select('*')
         .eq('account_id', accountId)
         .single()
-      if (configError || !config || !config.waba_id) {
-        return NextResponse.json(
-          { error: 'WhatsApp not configured — cannot delete on Meta.' },
-          { status: 400 },
-        )
-      }
-      const accessToken = decrypt(config.access_token)
-      try {
-        await deleteMessageTemplate({
-          wabaId: config.waba_id,
-          accessToken,
-          name: existing.name,
-          metaTemplateId: existing.meta_template_id,
-        })
-      } catch (e) {
-        const message = e instanceof Error ? e.message : 'Meta delete failed.'
-        return NextResponse.json({ error: message }, { status: 502 })
+
+      // If provider is evolution, no Meta deletion needed
+      if (config?.provider !== 'evolution') {
+        if (configError || !config || !config.waba_id) {
+          return NextResponse.json(
+            { error: 'WhatsApp not configured — cannot delete on Meta.' },
+            { status: 400 },
+          )
+        }
+        const accessToken = decrypt(config.access_token)
+        try {
+          await deleteMessageTemplate({
+            wabaId: config.waba_id,
+            accessToken,
+            name: existing.name,
+            metaTemplateId: existing.meta_template_id,
+          })
+        } catch (e) {
+          const message = e instanceof Error ? e.message : 'Meta delete failed.'
+          return NextResponse.json({ error: message }, { status: 502 })
+        }
       }
     }
 
