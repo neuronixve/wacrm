@@ -32,13 +32,15 @@ function sleep(ms: number) {
  */
 export async function generateGemini(args: ProviderArgs): Promise<ProviderResult> {
   const { apiKey, model, systemPrompt, messages, timeoutMs } = args
-  const requestedModel = model || 'gemini-flash-latest'
+  const requestedModel = model || 'gemini-3.6-flash'
 
   // Standard production fallback list if the requested model returns 404, 503, or 429
   const candidateModels = [
     requestedModel,
+    'gemini-3.6-flash',
+    'gemini-3.5-flash',
+    'gemini-flash-lite-latest',
     'gemini-flash-latest',
-    'gemini-2.5-flash',
   ].filter((m, i, arr) => m && arr.indexOf(m) === i)
 
   // Consolidate consecutive messages with the same role into a single turn,
@@ -83,69 +85,60 @@ export async function generateGemini(args: ProviderArgs): Promise<ProviderResult
   for (const currentModel of candidateModels) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(currentModel)}:generateContent?key=${apiKey}`
 
-    // Up to 2 attempts per model (for transient 503 high demand or 429)
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      try {
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: systemPrompt }],
           },
-          body: JSON.stringify({
-            systemInstruction: {
-              parts: [{ text: systemPrompt }],
-            },
-            contents,
-            generationConfig: {
-              maxOutputTokens: MAX_OUTPUT_TOKENS,
-              temperature: 0.7,
-            },
-          }),
-          signal: AbortSignal.timeout(timeoutMs),
-        })
+          contents,
+          generationConfig: {
+            maxOutputTokens: MAX_OUTPUT_TOKENS,
+            temperature: 0.7,
+          },
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      })
 
-        if (!res.ok) {
-          const err = await providerHttpError('Gemini', res)
-          lastError = err
-
-          // If 503 (high demand) or 429 (rate limit), sleep briefly and retry
-          if (res.status === 503 || res.status === 429) {
-            console.warn(`[Gemini] model ${currentModel} returned ${res.status}, retrying in 1.2s...`)
-            await sleep(1200)
-            continue
-          }
-
-          // If 404 (model not found / deprecated), break to next candidate model immediately
-          if (res.status === 404) {
-            console.warn(`[Gemini] model ${currentModel} not found (404), trying fallback model...`)
-            break
-          }
-
-          throw err
-        }
-
-        const data = (await res.json().catch(() => null)) as GeminiResponse | null
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text
-        if (!text || typeof text !== 'string' || !text.trim()) {
-          throw new AiError('Gemini returned an empty response.', {
-            code: 'empty_response',
-          })
-        }
-
-        const usage = normalizeUsage({
-          prompt: data?.usageMetadata?.promptTokenCount,
-          completion: data?.usageMetadata?.candidatesTokenCount,
-          total: data?.usageMetadata?.totalTokenCount,
-        })
-
-        return { text, usage }
-      } catch (err) {
+      if (!res.ok) {
+        const err = await providerHttpError('Gemini', res)
         lastError = err
-        const isAbort = err instanceof Error && err.name === 'AbortError'
-        if (isAbort) {
-          throw toNetworkError(err)
+
+        // If 503 (high demand) or 429 (rate limit) or 404 (model retired), try next candidate model
+        if (res.status === 503 || res.status === 429 || res.status === 404 || res.status === 500) {
+          console.warn(`[Gemini] model ${currentModel} returned ${res.status}, falling back to next available model...`)
+          continue
         }
+
+        throw err
       }
+
+      const data = (await res.json().catch(() => null)) as GeminiResponse | null
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text
+      if (!text || typeof text !== 'string' || !text.trim()) {
+        throw new AiError('Gemini returned an empty response.', {
+          code: 'empty_response',
+        })
+      }
+
+      const usage = normalizeUsage({
+        prompt: data?.usageMetadata?.promptTokenCount,
+        completion: data?.usageMetadata?.candidatesTokenCount,
+        total: data?.usageMetadata?.totalTokenCount,
+      })
+
+      return { text, usage }
+    } catch (err) {
+      lastError = err
+      const isAbort = err instanceof Error && err.name === 'AbortError'
+      if (isAbort) {
+        throw toNetworkError(err)
+      }
+      console.warn(`[Gemini] error on model ${currentModel}, trying fallback...`, err)
     }
   }
 
