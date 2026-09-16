@@ -4,6 +4,31 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit
 
 type Params = { params: Promise<{ conversationId: string }> }
 
+export async function GET(request: Request, { params }: Params) {
+  try {
+    const { supabase, accountId } = await requireRole('agent')
+    const { conversationId } = await params
+    const { data: conv, error } = await supabase
+      .from('conversations')
+      .select('id, ai_autoreply_disabled, ai_handoff_summary, assigned_agent_id')
+      .eq('id', conversationId)
+      .eq('account_id', accountId)
+      .maybeSingle()
+
+    if (error || !conv) {
+      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+    }
+
+    return NextResponse.json({
+      paused: conv.ai_autoreply_disabled ?? false,
+      handoffSummary: conv.ai_handoff_summary ?? null,
+      assignedAgentId: conv.assigned_agent_id ?? null,
+    })
+  } catch (err) {
+    return toErrorResponse(err)
+  }
+}
+
 /**
  * POST /api/ai/autoreply/[conversationId]  (agent+)
  *

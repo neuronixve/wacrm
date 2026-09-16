@@ -86,7 +86,28 @@ export function AiThreadBanner({
   // instantly on click; re-seeds whenever the thread (or its server
   // state via realtime) changes.
   const [paused, setPaused] = useState(disabled);
-  useEffect(() => setPaused(disabled), [conversationId, disabled]);
+  const [localHandoffSummary, setLocalHandoffSummary] = useState(handoffSummary);
+
+  useEffect(() => {
+    setPaused(disabled);
+    setLocalHandoffSummary(handoffSummary);
+  }, [conversationId, disabled, handoffSummary]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    let alive = true;
+    fetch(`/api/ai/autoreply/${conversationId}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!alive || !data) return;
+        if (typeof data.paused === "boolean") setPaused(data.paused);
+        if (data.handoffSummary !== undefined) setLocalHandoffSummary(data.handoffSummary);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [conversationId]);
 
   useEffect(() => {
     if (!accountId) return;
@@ -143,9 +164,9 @@ export function AiThreadBanner({
       <Banner tone="muted">
         <div className="min-w-0 flex-1">
           <p className="font-medium text-foreground">{t("pausedTitle")}</p>
-          {handoffSummary && (
-            <p className="truncate text-muted-foreground" title={handoffSummary}>
-              {handoffSummary}
+          {localHandoffSummary && (
+            <p className="truncate text-muted-foreground" title={localHandoffSummary}>
+              {localHandoffSummary}
             </p>
           )}
         </div>

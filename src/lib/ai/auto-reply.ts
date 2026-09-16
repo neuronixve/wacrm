@@ -136,12 +136,11 @@ export async function dispatchInboundToAiReply(
 
     if (handoff || !text) {
       // The model can't (or shouldn't) answer — stop auto-replying on
-      // this thread and hand it to a human. We (a) pause the bot here
-      // (sticky until re-enabled), (b) route the conversation to the
-      // configured handoff agent — null leaves it in the shared queue —
-      // and (c) leave a short internal note so whoever picks it up has
-      // context. Assigning fires the `on_conversation_assigned` trigger,
-      // which notifies the agent.
+      // this thread and hand it to a human. We (a) pause the bot here,
+      // (b) route the conversation to the configured handoff agent or account admin,
+      // (c) leave a short internal note so whoever picks it up has context,
+      // (d) notify the human agent via in-app notification, and
+      // (e) send a polite message to the customer on WhatsApp so they are informed.
       const summary = buildHandoffSummary({
         messages,
         replyCount: conv.ai_reply_count ?? 0,
@@ -150,12 +149,58 @@ export async function dispatchInboundToAiReply(
         ai_autoreply_disabled: true,
         ai_handoff_summary: summary,
       }
-      // Only set the assignee when a target is configured AND the thread
-      // isn't already owned — never stomp an existing human assignment.
-      if (config.handoffAgentId && !conv.assigned_agent_id) {
-        update.assigned_agent_id = config.handoffAgentId
+
+      let targetAgentId = config.handoffAgentId || conv.assigned_agent_id
+      if (!targetAgentId) {
+        const { data: adminMember } = await db
+          .from('account_members')
+          .select('user_id')
+          .eq('account_id', accountId)
+          .order('role', { ascending: true })
+          .limit(1)
+          .maybeSingle()
+        if (adminMember?.user_id) {
+          targetAgentId = adminMember.user_id
+        }
+      }
+
+      if (targetAgentId && !conv.assigned_agent_id) {
+        update.assigned_agent_id = targetAgentId
       }
       await db.from('conversations').update(update).eq('id', conversationId)
+
+      // Send the customer a polite message via WhatsApp
+      const handoffMessage =
+        text && text.trim()
+          ? text.trim()
+          : 'Entendido. En este momento te estoy transfiriendo con un asesor humano de nuestro equipo para atenderte personalmente y responder todas tus dudas con detalle. En breve te atenderemos por aquí.'
+
+      await engineSendText({
+        accountId,
+        userId: configOwnerUserId,
+        conversationId,
+        contactId,
+        text: handoffMessage,
+        aiGenerated: true,
+      })
+
+      // Create an in-app notification for the human agent
+      if (targetAgentId) {
+        try {
+          await db.from('notifications').insert({
+            account_id: accountId,
+            user_id: targetAgentId,
+            type: 'conversation_assigned',
+            conversation_id: conversationId,
+            contact_id: contactId,
+            title: 'Asesor Humano Requerido',
+            body: `El asistente de IA transfirió el chat con el cliente para atención humana: ${summary}`,
+          })
+        } catch (nErr) {
+          console.warn('[ai auto-reply] handoff notification failed:', nErr)
+        }
+      }
+
       return
     }
 

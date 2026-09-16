@@ -92,7 +92,7 @@ export function buildSystemPrompt(args: {
 
   if (mode === 'auto_reply') {
     parts.push(
-      `You are replying automatically with no human in the loop. If you cannot confidently and safely help — the customer explicitly asks for a human, is upset or complaining, or the request needs information you do not have — reply with exactly ${HANDOFF_SENTINEL} and nothing else. A human agent will then take over. Prefer handing off over guessing.`,
+      `You are replying automatically as the company's virtual assistant. Always prioritize and strictly follow the "Business context and instructions" provided below. If the customer explicitly asks for a human advisor, is upset or complaining, or asks for something completely outside your guidance, provide a courteous response informing them that you are transferring them to a human specialist from the team, and include ${HANDOFF_SENTINEL}.`,
     )
   }
 
@@ -103,8 +103,8 @@ export function buildSystemPrompt(args: {
   if (knowledge && knowledge.length > 0) {
     const fallback =
       mode === 'auto_reply'
-        ? `if they don't cover the question, do not guess — reply with exactly ${HANDOFF_SENTINEL} so a human can help`
-        : "if they don't cover the question, don't guess — say you'll check and follow up"
+        ? `if they don't cover the question, follow the business instructions for off-script questions or indicate that a specialist will confirm the detail`
+        : "if they don't cover the question, follow the business guidelines to check and follow up"
     parts.push(
       'Knowledge base — excerpts from the business\'s own documentation, retrieved for this question. ' +
         `Prefer these for any specifics (prices, policies, facts); ${fallback}. ` +
