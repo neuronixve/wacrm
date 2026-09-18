@@ -34,6 +34,9 @@ export interface AiConfig {
   /** True when the account has the 'export' plan tier or export mode is activated. */
   isExportPlan?: boolean
   isExportMode?: boolean
+  autoReplyOnlyNewContacts?: boolean
+  autoReplyIgnoreSavedContacts?: boolean
+  autoReplyIgnoreExistingConversations?: boolean
 }
 
 export interface ChatMessageMedia {

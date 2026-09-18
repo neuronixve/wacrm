@@ -41,6 +41,9 @@ describe('loadAiConfig requireActive', () => {
     expect(config).not.toBeNull()
     expect(config!.provider).toBe('openai')
     expect(config!.apiKey).toBe('plain:enc-key')
+    expect(config!.autoReplyOnlyNewContacts).toBe(false)
+    expect(config!.autoReplyIgnoreSavedContacts).toBe(true)
+    expect(config!.autoReplyIgnoreExistingConversations).toBe(true)
   })
 
   it('returns null when there is no row', async () => {

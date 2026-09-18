@@ -877,6 +877,8 @@ async function processMessage(
       conversationId: conversation.id,
       contactId: contactRecord.id,
       configOwnerUserId,
+      isNewContact: contactOutcome.wasCreated,
+      isNewConversation: convResult.created,
     })
   }
 

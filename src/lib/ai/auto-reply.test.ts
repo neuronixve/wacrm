@@ -36,6 +36,21 @@ vi.mock('./admin-client', () => ({
         }
         return chain
       }
+      if (table === 'account_members') {
+        const chain = {
+          select: () => chain,
+          eq: () => chain,
+          order: () => chain,
+          limit: () => chain,
+          maybeSingle: () => Promise.resolve({ data: null, error: null }),
+        }
+        return chain
+      }
+      if (table === 'notifications') {
+        return {
+          insert: () => Promise.resolve({ error: null }),
+        }
+      }
       // conversations
       return {
         select: () => ({
@@ -184,13 +199,72 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     expect(h.generateReply).not.toHaveBeenCalled()
     expect(h.engineSendText).not.toHaveBeenCalled()
   })
+
+  it('skips when autoReplyOnlyNewContacts is enabled and contact already existed', async () => {
+    h.loadAiConfig.mockResolvedValue(
+      aiConfig({
+        autoReplyOnlyNewContacts: true,
+        autoReplyIgnoreSavedContacts: true,
+      }),
+    )
+    await dispatchInboundToAiReply({ ...ARGS, isNewContact: false, isNewConversation: true })
+    expect(h.generateReply).not.toHaveBeenCalled()
+    expect(h.engineSendText).not.toHaveBeenCalled()
+  })
+
+  it('skips when autoReplyOnlyNewContacts is enabled and conversation already existed', async () => {
+    h.loadAiConfig.mockResolvedValue(
+      aiConfig({
+        autoReplyOnlyNewContacts: true,
+        autoReplyIgnoreExistingConversations: true,
+      }),
+    )
+    await dispatchInboundToAiReply({ ...ARGS, isNewContact: true, isNewConversation: false })
+    expect(h.generateReply).not.toHaveBeenCalled()
+    expect(h.engineSendText).not.toHaveBeenCalled()
+  })
+
+  it('replies when autoReplyOnlyNewContacts is enabled and both contact and conversation are new', async () => {
+    h.loadAiConfig.mockResolvedValue(
+      aiConfig({
+        autoReplyOnlyNewContacts: true,
+        autoReplyIgnoreSavedContacts: true,
+        autoReplyIgnoreExistingConversations: true,
+      }),
+    )
+    await dispatchInboundToAiReply({ ...ARGS, isNewContact: true, isNewConversation: true })
+    expect(h.generateReply).toHaveBeenCalled()
+    expect(h.engineSendText).toHaveBeenCalled()
+  })
+
+  it('continues replying to ongoing AI threads even if isNewContact is false', async () => {
+    h.state.conv = {
+      assigned_agent_id: null,
+      ai_autoreply_disabled: false,
+      ai_reply_count: 1,
+    }
+    h.loadAiConfig.mockResolvedValue(
+      aiConfig({
+        autoReplyOnlyNewContacts: true,
+        autoReplyIgnoreSavedContacts: true,
+        autoReplyIgnoreExistingConversations: true,
+      }),
+    )
+    await dispatchInboundToAiReply({ ...ARGS, isNewContact: false, isNewConversation: false })
+    expect(h.generateReply).toHaveBeenCalled()
+    expect(h.engineSendText).toHaveBeenCalled()
+  })
 })
 
 describe('dispatchInboundToAiReply — handoff', () => {
   it('disables auto-reply, writes a summary, and does not send on handoff', async () => {
     h.generateReply.mockResolvedValue({ text: '', handoff: true })
     await dispatchInboundToAiReply(ARGS)
-    expect(h.engineSendText).not.toHaveBeenCalled()
+    expect(h.engineSendText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining('asesor humano'),
+      }),
+    )
     expect(h.state.rpcCalls).toHaveLength(0)
     expect(h.state.updatePayload).toMatchObject({ ai_autoreply_disabled: true })
     expect(h.state.updatePayload?.ai_handoff_summary).toContain(

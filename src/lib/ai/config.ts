@@ -14,10 +14,13 @@ interface AiConfigRow {
   embeddings_api_key: string | null
   booking_calendar_url?: string | null
   is_export_mode?: boolean | null
+  auto_reply_only_new_contacts?: boolean | null
+  auto_reply_ignore_saved_contacts?: boolean | null
+  auto_reply_ignore_existing_conversations?: boolean | null
 }
 
 const CONFIG_COLUMNS =
-  'provider, model, api_key, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, embeddings_api_key, booking_calendar_url, is_export_mode'
+  'provider, model, api_key, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, embeddings_api_key, booking_calendar_url, is_export_mode, auto_reply_only_new_contacts, auto_reply_ignore_saved_contacts, auto_reply_ignore_existing_conversations'
 
 /**
  * Load and decrypt the account's AI config for *use* (draft or
@@ -69,6 +72,9 @@ export async function loadAiConfig(
         bookingCalendarUrl: accountRow?.booking_calendar_url || null,
         isExportPlan,
         isExportMode: isExportPlan,
+        autoReplyOnlyNewContacts: false,
+        autoReplyIgnoreSavedContacts: true,
+        autoReplyIgnoreExistingConversations: true,
       }
     }
     return null
@@ -128,6 +134,9 @@ export async function loadAiConfig(
     bookingCalendarUrl,
     isExportPlan,
     isExportMode,
+    autoReplyOnlyNewContacts: Boolean(row.auto_reply_only_new_contacts),
+    autoReplyIgnoreSavedContacts: row.auto_reply_ignore_saved_contacts ?? true,
+    autoReplyIgnoreExistingConversations: row.auto_reply_ignore_existing_conversations ?? true,
   }
 }
 

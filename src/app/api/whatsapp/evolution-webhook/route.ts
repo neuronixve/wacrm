@@ -357,6 +357,8 @@ export async function POST(request: Request) {
               conversationId,
               contactId,
               configOwnerUserId: ownerUserId,
+              isNewContact: !existingContact,
+              isNewConversation: !existingConv,
             });
           } catch (aiErr) {
             console.error('[evolution-webhook] AI reply error:', aiErr);

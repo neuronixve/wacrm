@@ -30,7 +30,7 @@ export async function GET() {
       // `api_key` is selected only to derive `has_key` — it is stripped
       // out below and never returned to the client.
       .select(
-        'provider, model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, api_key, embeddings_api_key, booking_calendar_url, is_export_mode',
+        'provider, model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, api_key, embeddings_api_key, booking_calendar_url, is_export_mode, auto_reply_only_new_contacts, auto_reply_ignore_saved_contacts, auto_reply_ignore_existing_conversations',
       )
       .eq('account_id', accountId)
       .maybeSingle()
@@ -112,6 +112,11 @@ export async function POST(request: Request) {
     let maxPer = Number(body.auto_reply_max_per_conversation)
     if (!Number.isFinite(maxPer)) maxPer = 3
     maxPer = Math.min(20, Math.max(1, Math.floor(maxPer)))
+
+    const autoReplyOnlyNewContacts = body.auto_reply_only_new_contacts === true
+    const autoReplyIgnoreSavedContacts = body.auto_reply_ignore_saved_contacts !== false
+    const autoReplyIgnoreExistingConversations =
+      body.auto_reply_ignore_existing_conversations !== false
 
     // Handoff routing target for auto-reply. A non-empty string must be a
     // member of this account (else the conversation would be assigned to a
@@ -225,6 +230,9 @@ export async function POST(request: Request) {
       is_active: isActive,
       auto_reply_enabled: autoReplyEnabled,
       auto_reply_max_per_conversation: maxPer,
+      auto_reply_only_new_contacts: autoReplyOnlyNewContacts,
+      auto_reply_ignore_saved_contacts: autoReplyIgnoreSavedContacts,
+      auto_reply_ignore_existing_conversations: autoReplyIgnoreExistingConversations,
     }
     // Only touch the handoff target when the form actually sent the field,
     // so a partial save (e.g. flipping a toggle) doesn't wipe it.

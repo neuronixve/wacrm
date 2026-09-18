@@ -79,6 +79,9 @@ export function AiConfig() {
   const [systemPrompt, setSystemPrompt] = useState('');
   const [isActive, setIsActive] = useState(false);
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
+  const [autoReplyOnlyNewContacts, setAutoReplyOnlyNewContacts] = useState(false);
+  const [autoReplyIgnoreSavedContacts, setAutoReplyIgnoreSavedContacts] = useState(true);
+  const [autoReplyIgnoreExistingConversations, setAutoReplyIgnoreExistingConversations] = useState(true);
   const [maxPerConversation, setMaxPerConversation] = useState(20);
   // Empty string = leave unassigned (shared queue).
   const [handoffAgentId, setHandoffAgentId] = useState('');
@@ -115,6 +118,9 @@ export function AiConfig() {
         setSystemPrompt(data.system_prompt ?? '');
         setIsActive(data.is_active);
         setAutoReplyEnabled(data.auto_reply_enabled);
+        setAutoReplyOnlyNewContacts(Boolean(data.auto_reply_only_new_contacts));
+        setAutoReplyIgnoreSavedContacts(data.auto_reply_ignore_saved_contacts ?? true);
+        setAutoReplyIgnoreExistingConversations(data.auto_reply_ignore_existing_conversations ?? true);
         setMaxPerConversation(data.auto_reply_max_per_conversation ?? 20);
         setHandoffAgentId(data.handoff_agent_id ?? '');
         setHasStoredKey(Boolean(data.has_key));
@@ -167,6 +173,9 @@ export function AiConfig() {
     is_active: isActive,
     auto_reply_enabled: autoReplyEnabled,
     auto_reply_max_per_conversation: maxPerConversation,
+    auto_reply_only_new_contacts: autoReplyOnlyNewContacts,
+    auto_reply_ignore_saved_contacts: autoReplyIgnoreSavedContacts,
+    auto_reply_ignore_existing_conversations: autoReplyIgnoreExistingConversations,
     handoff_agent_id: handoffAgentId || null,
     booking_calendar_url: bookingCalendarUrl.trim() || null,
     is_export_mode: isExportMode,
@@ -453,6 +462,62 @@ export function AiConfig() {
                 disabled={disabled || !isActive}
               />
             </div>
+
+            {autoReplyEnabled && (
+              <div className="space-y-3 rounded-md border border-border bg-muted/20 p-3">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      {t('onlyNewContacts')}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {t('onlyNewContactsDesc')}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={autoReplyOnlyNewContacts}
+                    onCheckedChange={setAutoReplyOnlyNewContacts}
+                    disabled={disabled || !autoReplyEnabled}
+                  />
+                </div>
+
+                {autoReplyOnlyNewContacts && (
+                  <div className="ml-2 space-y-3 border-l-2 border-primary/20 pl-3 pt-2">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="text-xs font-medium text-foreground">
+                          {t('ignoreSavedContacts')}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {t('ignoreSavedContactsDesc')}
+                        </p>
+                      </div>
+                      <Switch
+                        checked={autoReplyIgnoreSavedContacts}
+                        onCheckedChange={setAutoReplyIgnoreSavedContacts}
+                        disabled={disabled || !autoReplyEnabled || !autoReplyOnlyNewContacts}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="text-xs font-medium text-foreground">
+                          {t('ignoreExistingConversations')}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {t('ignoreExistingConversationsDesc')}
+                        </p>
+                      </div>
+                      <Switch
+                        checked={autoReplyIgnoreExistingConversations}
+                        onCheckedChange={setAutoReplyIgnoreExistingConversations}
+                        disabled={disabled || !autoReplyEnabled || !autoReplyOnlyNewContacts}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="flex items-center justify-between gap-4">
               <div>

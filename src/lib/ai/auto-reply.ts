@@ -18,6 +18,10 @@ interface DispatchArgs {
   /** The account's WhatsApp config owner, used for the outbound send's
    *  audit columns (mirrors how the flow runner passes it through). */
   configOwnerUserId: string
+  /** Optional hint: was the contact freshly created on this inbound message? */
+  isNewContact?: boolean
+  /** Optional hint: was the conversation freshly created on this inbound message? */
+  isNewConversation?: boolean
 }
 
 /**
@@ -33,6 +37,7 @@ interface DispatchArgs {
  *   - a human agent is assigned (they own the thread)
  *   - auto-reply was disabled for this conversation (prior handoff)
  *   - the per-conversation reply cap is reached
+ *   - new-contacts-only mode is active and this contact/conversation already existed
  *   - there's nothing to reply to
  *
  * The 24h WhatsApp session window is inherently open here — we're
@@ -69,7 +74,7 @@ export async function dispatchInboundToAiReply(
 
     const { data: conv, error: convErr } = await db
       .from('conversations')
-      .select('assigned_agent_id, ai_autoreply_disabled, ai_reply_count')
+      .select('assigned_agent_id, ai_autoreply_disabled, ai_reply_count, created_at')
       .eq('id', conversationId)
       .maybeSingle()
     if (convErr || !conv) return
@@ -78,6 +83,49 @@ export async function dispatchInboundToAiReply(
     // Cheap early-out; the authoritative cap check is the atomic claim
     // below (this read can race a concurrent inbound).
     if (conv.ai_reply_count >= config.autoReplyMaxPerConversation) return
+
+    // Filter for new contacts only
+    if (config.autoReplyOnlyNewContacts) {
+      const isOngoingAiThread = (conv.ai_reply_count ?? 0) > 0
+
+      if (!isOngoingAiThread) {
+        // 1. Ignore contacts that already existed in the CRM before this inbound
+        if (config.autoReplyIgnoreSavedContacts) {
+          let contactExisted = args.isNewContact === false
+          if (args.isNewContact === undefined) {
+            const { data: contactRow } = await db
+              .from('contacts')
+              .select('created_at')
+              .eq('id', contactId)
+              .maybeSingle()
+            if (contactRow && conv.created_at) {
+              const contactTime = new Date(contactRow.created_at).getTime()
+              const convTime = new Date(conv.created_at).getTime()
+              if (convTime - contactTime > 60000) {
+                contactExisted = true
+              }
+            }
+          }
+          if (contactExisted) return
+        }
+
+        // 2. Ignore conversations that already have history
+        if (config.autoReplyIgnoreExistingConversations) {
+          let conversationExisted = args.isNewConversation === false
+          if (args.isNewConversation === undefined) {
+            const { count: priorMsgCount } = await db
+              .from('messages')
+              .select('id', { count: 'exact', head: true })
+              .eq('conversation_id', conversationId)
+              .neq('sender_type', 'bot')
+            if ((priorMsgCount ?? 0) > 1) {
+              conversationExisted = true
+            }
+          }
+          if (conversationExisted) return
+        }
+      }
+    }
 
     const messages = await buildConversationContext(db, conversationId)
     if (messages.length === 0) return
