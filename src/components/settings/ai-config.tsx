@@ -91,6 +91,7 @@ export function AiConfig() {
   const [bookingCalendarUrl, setBookingCalendarUrl] = useState('');
   const [isExportMode, setIsExportMode] = useState(false);
   const [isExportPlan, setIsExportPlan] = useState(false);
+  const [hasSystemGeminiKey, setHasSystemGeminiKey] = useState(false);
 
   // Guard keyed on the account (not a bare boolean) so an in-place
   // account switch — ownership transfer, multi-account membership —
@@ -110,6 +111,7 @@ export function AiConfig() {
       setIsExportPlan(Boolean(data.is_export_plan));
       setIsExportMode(Boolean(data.is_export_mode || data.is_export_plan));
       setBookingCalendarUrl(data.booking_calendar_url ?? '');
+      setHasSystemGeminiKey(Boolean(data.has_system_gemini_key));
 
       if (data.configured) {
         setConfigured(true);
@@ -158,7 +160,7 @@ export function AiConfig() {
     if (isDefaultModel) setModel(AI_PROVIDER_DEFAULT_MODEL[next]);
   };
 
-  const keyPayload = () => (keyEdited ? apiKey.trim() : undefined);
+  const keyPayload = () => (keyEdited && apiKey.trim() ? apiKey.trim() : undefined);
 
   // undefined = leave unchanged; '' typed = null (clear); text = set.
   const embeddingsKeyPayload = () =>
@@ -208,7 +210,8 @@ export function AiConfig() {
       toast.error(t('missingModel'));
       return;
     }
-    if (!configured && !keyEdited) {
+    const isKeyRequired = !configured && !keyEdited && (provider !== 'gemini' || !hasSystemGeminiKey);
+    if (isKeyRequired) {
       toast.error(t('missingApiKey'));
       return;
     }
@@ -375,6 +378,11 @@ export function AiConfig() {
                   {t('testKey')}
                 </Button>
               </div>
+              {provider === 'gemini' && hasSystemGeminiKey && !apiKey.trim() && (
+                <p className="text-xs text-emerald-500 font-medium">
+                  ✓ {t('systemKeyActive')}
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">

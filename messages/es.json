@@ -1671,6 +1671,7 @@
       "provider": "Provider",
       "model": "Model",
       "apiKey": "API key",
+      "systemKeyActive": "Clave global de la plataforma activa. No necesitas ingresar ninguna clave a menos que desees usar una propia.",
       "testKey": "Test key",
       "testSuccess": "Key works — the provider responded.",
       "testRejected": "The provider rejected the request.",

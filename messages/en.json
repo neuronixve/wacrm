@@ -1683,6 +1683,7 @@
       "provider": "Provider",
       "model": "Model",
       "apiKey": "API key",
+      "systemKeyActive": "Platform global API key active. You don't need to enter a key unless you want to use your own.",
       "testKey": "Test key",
       "testSuccess": "Key works — the provider responded.",
       "testRejected": "The provider rejected the request.",

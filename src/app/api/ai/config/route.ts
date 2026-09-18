@@ -51,9 +51,15 @@ export async function GET() {
 
     const isExportPlan = accountRow?.plan_tier === 'export'
 
+    const hasSystemGeminiKey = Boolean(process.env.GEMINI_API_KEY)
+
     if (!data) {
       return NextResponse.json({
         configured: false,
+        has_key: hasSystemGeminiKey,
+        has_system_gemini_key: hasSystemGeminiKey,
+        provider: hasSystemGeminiKey ? 'gemini' : 'openai',
+        model: hasSystemGeminiKey ? 'gemini-3.6-flash' : 'gpt-4o-mini',
         plan_tier: accountRow?.plan_tier || 'basic',
         is_export_plan: isExportPlan,
         booking_calendar_url: accountRow?.booking_calendar_url || null,
@@ -64,7 +70,8 @@ export async function GET() {
     const { api_key, embeddings_api_key, booking_calendar_url, ...safe } = data
     return NextResponse.json({
       configured: true,
-      has_key: !!api_key,
+      has_key: !!api_key || hasSystemGeminiKey,
+      has_system_gemini_key: hasSystemGeminiKey,
       has_embeddings_key: !!embeddings_api_key,
       plan_tier: accountRow?.plan_tier || 'basic',
       is_export_plan: isExportPlan,
@@ -222,7 +229,11 @@ export async function POST(request: Request) {
       }
     }
 
-    const encryptedKey = rawKey ? encrypt(rawKey) : null
+    const encryptedKey = rawKey
+      ? encrypt(rawKey)
+      : provider === 'gemini' && apiKeyPlain
+        ? encrypt(apiKeyPlain)
+        : null
     const shared: Record<string, unknown> = {
       provider,
       model,
@@ -268,10 +279,11 @@ export async function POST(request: Request) {
         )
       }
     } else {
+      const finalKey = encryptedKey || encrypt(apiKeyPlain)
       const { error: insErr } = await supabase.from('ai_configs').insert({
         account_id: accountId,
         created_by: userId,
-        api_key: encryptedKey, // guaranteed non-null: rawKey required when no existing row
+        api_key: finalKey,
         ...shared,
       })
       if (insErr) {
